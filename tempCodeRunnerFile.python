@@ -1,0 +1,10 @@
+import numpy as np
+
+a = (2, 4)
+b = (4, 6)
+
+na = np.array(a)
+nb = np.array(b)
+
+c = (na + nb) / 2
+print(c)

@@ -1,105 +1,79 @@
 from __future__ import annotations
 
 import os
-import math
 import random
 import time
 from abc import abstractmethod
 from typing import Callable, Optional
 
+import numpy as np
 import pygame
 
-from .utills import ease_in_out_quad
+from .utills import ease, get_mid_coord
 
 
 class Simulator:
 
-    class View:
-
-        def __init__(self, sim, mode: int) -> None:
-            self._sim = sim
-            self.mode = mode
-
-            self.road_top = RoadTop(self)
-            self.road_right = RoadRight(self)
-            self.road_bottom = RoadBottom(self)
-            self.road_left = RoadLeft(self)
-
-        @property
-        def sim(self) -> Simulator:
-            return self._sim
-
-        def get_view(self) -> tuple[int, int, int, int]:
-            if self.mode == 0:
-                return 0, 0, self.sim.width, self.sim.height
-            elif self.mode == 1:
-                return 0, 0, self.sim.width // 2, self.sim.height
-            else:
-                return self.sim.width // 2, 0, self.sim.width // 2, self.sim.height
-
-        def update(self) -> None:
-            self.road_top.update()
-            self.road_right.update()
-            self.road_bottom.update()
-            self.road_left.update()
-
-        def draw(self) -> None:
-            # if not self._sim.needs_refresh:
-            #     return
-            # return
-            self.road_top.draw()
-            self.road_right.draw()
-            self.road_bottom.draw()
-            self.road_left.draw()
-
-        def __getitem__(self, index) -> Road:
-            if index == 0:
-                return self.road_top
-            if index == 1:
-                return self.road_right
-            if index == 2:
-                return self.road_bottom
-            if index == 3:
-                return self.road_left
-            raise IndexError
-
-    def __init__(self, window: pygame.Surface, device_info: pygame.display.Info, is_fullscreen: bool, flags) -> None:
-        self._window = window
-        self._last_resolution = (
-            self._window.get_width(), self._window.get_height())
-        self._device_info = device_info
-        self._is_fullscreen = is_fullscreen
-        self._running = True
+    def __init__(self,
+                 window: pygame.Surface,
+                 device_info,
+                 is_fullscreen,
+                 user_event_1,
+                 ) -> None:
+        self.window = window
+        self.resolution = (self.window.get_width(), self.window.get_height())
+        self.device_info = device_info
+        self.is_fullscreen = is_fullscreen
+        self.running = True
         self.time_started = time.time()
-        self.dividers = 2  # Not Implemented: Road Dividers
-        self.menu = Menu(self)
-        self.bg = Background(self)
-        self._state = State.MENU
+        self.time_speed: float = 1.0
+        self.randomly_add_cars_event = user_event_1
+
+        self.view_1 = ViewLeft(self)
+        self.view_2 = ViewRight(self)
+
         self.needs_refresh = True
-        self.flags = flags
-        self.time_speed = 1
-
-    def update(self) -> None:
-        if self.view_1:
-            self.view_1.update()
-        if self.view_2:
-            self.view_2.update()
-
-    def start(self) -> None:
-        self._state = State.STANDARD
-
-        self.view_1 = self.View(self, 0)
-        self.view_2 = None
-
-    def start_duel(self) -> None:
-        self._state = State.DUEL_VIEW
-
-        self.view_1 = self.View(self, 1)
-        self.view_2 = self.View(self, 2)
+        self.bg_elements: list[UIElement] = []
+        self.mg_elements: list[UIElement] = []
+        self.fg_elements: list[UIElement] = []
+        self.buttons: list[Button] = []
+        self.paused = False
+        self.dt = 0.0
 
     @property
-    def window(self) -> pygame.Surface:
-        return self._window
+    def speed(self) -> float:
+        return 0.0 if self.paused else self.time_speed
+
+    @property
+    def speed_str(self) -> str:
+        return "Paused" if self.paused else f"{self.speed:.2f}x"
+
+    @speed.setter
+    def speed(self, value: float) -> None:
+        self.time_speed = value
+
+    def increase_speed(self) -> None:
+        if self.paused:
+            self.pause()
+        self.time_speed = min(2.0, self.time_speed + 0.1)
+        self.update_events()
+
+    def decrease_speed(self) -> None:
+        if self.paused:
+            self.pause()
+        self.time_speed = max(0.0, self.time_speed - 0.1)
+        self.update_events()
+
+    def update_events(self) -> None:
+        pygame.time.set_timer(self.randomly_add_cars_event, int(1000 * self.time_speed))
+
+    @property
+    def dt(self) -> float:
+        return self._dt
+
+    @dt.setter
+    def dt(self, value: float) -> None:
+        self._dt = value
 
     @property
     def width(self) -> int:
@@ -109,209 +83,199 @@ class Simulator:
     def height(self) -> int:
         return self.window.get_height()
 
-    @property
-    def state(self) -> State:
-        return self._state
+    def add_button(self, button: Button) -> None:
+        self.buttons.append(button)
 
-    @state.setter
-    def state(self, state: State) -> None:
-        self._state = state
+    def handle_button_press(self, event: pygame.event) -> None:
+        for button in self.buttons:
+            button.handle_event(event)
 
-    @property
-    def running(self) -> bool:
-        return self._running
-
-    @running.setter
-    def running(self, running: bool) -> None:
-        self._running = running
-
-    def get_all_cars(self) -> list[Car]:
-        return self.road_top._cars + self.road_right._cars + self.road_bottom._cars + self.road_left._cars
-
-    def toggle_fullscreen(self) -> None:
-        if self._is_fullscreen:
-            self._is_fullscreen = False
-            pygame.display.toggle_fullscreen()
-            pygame.display.set_mode(self._last_resolution, flags=self.flags)
-        else:
-            self._is_fullscreen = True
-            self._last_resolution = (
-                self._window.get_width(),
-                self._window.get_height()
-            )
-            pygame.display.set_mode(
-                (self._device_info.current_w,
-                 self._device_info.current_h),
-                flags=self.flags | pygame.FULLSCREEN
-            )
-        # pygame.display.toggle_fullscreen()
-        self.needs_refresh = True
-
-    def stop(self) -> None:
-        self._running = False
+    def pause(self) -> None:
+        self.paused = not self.paused
 
     def randomly_add_cars(self, chance: Optional[int] = 50, road_index: Optional[int] = None) -> None:
-        roads: list[Road] = []
+        ran = random.randint(0, 100)
         if road_index:
-            roads.append(self.view_1[road_index])
-        else:
-            for i in range(4):
-                roads.append(self.view_1[i])
-
-        for road in roads:
-            if random.randint(0, 100) <= chance:
+            if ran <= chance:
                 direction = random.randint(0, 2)
-                road.add_car(direction)
+                self.view_1[road_index].add_car(direction)
+                self.view_2[road_index].add_car(direction)
+        else:
+            road_index = random.randint(0, 3)
+            if ran <= chance:
+                direction = random.randint(0, 2)
+                self.view_1[road_index].add_car(direction)
+                self.view_2[road_index].add_car(direction)
 
-    def draw_boundaries(self) -> None:
-        match self.state:
-            case State.MENU:
-                self.menu.draw()
-            case State.STANDARD:
-                self.view_1.draw()
-            case State.ADVANCED:
-                for road in self._roads:
-                    road.draw()
-            case State.DUEL_VIEW:
-                view = 0, 0, self.width // 2, self.height
-                mid = view[2] // 2, view[3] // 2
+    def draw_debug(self) -> None:
+        self.view_1.draw_debug()
+        self.view_2.draw_debug()
 
-                pygame.draw.circle(self.window, (255, 255, 255), mid, 5)
-                view = self.width // 2, 0, self.width // 2, self.height
-                mid = view[2] // 2, view[3] // 2
+    def draw(self) -> None:
+        for element in self.bg_elements:
+            element.draw()
+        self.view_1.draw()
+        self.view_2.draw()
+        for element in self.mg_elements:
+            element.draw()
+        for element in self.fg_elements:
+            element.draw()
+        for button in self.buttons:
+            button.draw()
 
-                # draw a dot at the mid point
-                pygame.draw.circle(self.window, (255, 255, 255), mid, 5)
+    def update(self) -> None:
+        # if self.needs_refresh:
+        self.view_1.update()
+        self.view_2.update()
 
-                left_rect = pygame.Rect(0, 0, self.width // 2, self.height)
-                self.window.set_clip(left_rect)
+    def move(self) -> None:
+        self.view_1.move()
+        self.view_2.move()
 
-                self.view_1.draw()
+    def add_element(self, element: UIElement) -> None:
+        if element.z == 0:
+            self.bg_elements.append(element)
+        elif element.z == 1:
+            self.mg_elements.append(element)
+        elif element.z == 2:
+            self.fg_elements.append(element)
 
-                right_rect = pygame.Rect(
-                    self.width // 2, 0, self.width // 2, self.height)
-                self.window.set_clip(right_rect)
+class View:
 
-                self.view_2.draw()
-
-                self.window.set_clip(None)
-
-        self.needs_refresh = False
-
-
-class Menu:
+    rect: pygame.Rect
 
     def __init__(self, sim: Simulator) -> None:
-        self._sim = sim
-        title_font = pygame.font.Font(
-            os.path.join("Assets", "GeosansLight.ttf"), 100)
-        self.title = title_font.render("Traffic Simulator", True, Color.BLACK)
-        button_font = pygame.font.Font(
-            os.path.join("Assets", "Roboto-Light.ttf"), 50)
-        self.button_color = Color.BUTTON
-        self.button_hover_color = Color.BUTTON_HOVER
-        self.buttons: list[tuple[str, pygame.Surface]] = [
-            ("Start", button_font.render("Start", True, Color.WHITE)),
-            ("Options", button_font.render("Options", True, Color.WHITE)),
-            ("Quit", button_font.render("Quit", True, Color.WHITE))
-        ]
+        self.sim = sim
+
+        self.road_top = RoadTop(self)
+        self.road_right = RoadRight(self)
+        self.road_bottom = RoadBottom(self)
+        self.road_left = RoadLeft(self)
 
     @property
-    def window(self) -> pygame.Surface:
-        return self._sim.window
+    def width(self) -> int:
+        return self.rect.width
 
-    def get_title_rect(self) -> pygame.Rect:
-        if self._sim.needs_refresh:
-            self.title_rect = (self.window.get_width(
-            ) // 2 - self.title.get_width() // 2, self.window.get_height() // 6)
-        return self.title_rect
+    @property
+    def height(self) -> int:
+        return self.rect.height
 
-    def get_buttons_rects(self) -> list[pygame.Rect]:
-        if self._sim.needs_refresh:
-            self.button_rects = []
-            for i, (_, button_surf) in enumerate(self.buttons):
-                button_rect = button_surf.get_rect(
-                    center=(self.window.get_width() // 2, self.window.get_height() // 2 + i * 100))
-                self.button_rects.append(button_rect)
-        return self.button_rects
+    def update(self) -> None:
+        self.road_top.update()
+        self.road_right.update()
+        self.road_bottom.update()
+        self.road_left.update()
+
+    def move(self) -> None:
+        self.road_top.move()
+        self.road_right.move()
+        self.road_bottom.move()
+        self.road_left.move()
+
+    def draw_debug(self) -> None:
+        self.sim.window.set_clip(self.rect)
+        self.road_top.draw_debug()
+        self.road_right.draw_debug()
+        self.road_bottom.draw_debug()
+        self.road_left.draw_debug()
+        self.sim.window.set_clip(None)
 
     def draw(self) -> None:
-        mouse_pos = pygame.mouse.get_pos()
-        blit_lists = []
-        for rect, (text, button_surf) in zip(self.get_buttons_rects(), self.buttons):
-            if rect.collidepoint(mouse_pos):
-                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
-                # Draw hover color
-                pygame.draw.rect(self.window, self.button_hover_color, rect)
-            else:
-                # Draw normal color
-                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
-                pygame.draw.rect(self.window, self.button_color, rect)
-            blit_lists.append((button_surf, rect))
-        self.window.blits(blit_lists)
+        # if not self._sim.needs_refresh:
+        #     return
+        # return
+        self.sim.window.set_clip(self.rect)
+        # self.road_top.draw()
+        # self.road_right.draw()
+        # self.road_bottom.draw()
+        # self.road_left.draw()
+        self.sim.window.set_clip(None)
+        ...
 
-        if not self._sim.needs_refresh:
-            return
-        self._sim.bg.draw()
-        self.window.blit(self.title, self.get_title_rect())
-        # Draw buttons
+    def __getitem__(self, index):
+        if index == 0:
+            return self.road_top
+        if index == 1:
+            return self.road_right
+        if index == 2:
+            return self.road_bottom
+        if index == 3:
+            return self.road_left
+        raise IndexError
 
 
-class Background:
+class ViewLeft(View):
 
     def __init__(self, sim: Simulator) -> None:
-        self._sim = sim
-        self.image = pygame.image.load(os.path.join("Assets", "grass.png"))
-        self.width = 80
-        self.height = 80
-        self.image = pygame.transform.scale(self.image, (self.width, self.height))
+        self.rect = pygame.Rect(0, 0, sim.width // 2, sim.height)
+        super().__init__(sim)
 
-    def draw(self) -> None:
-        if not self._sim.needs_refresh:
-            return
-        # return
-        self.blit_list = []
-        for x in range(0, self._sim.width, self.width):
-            for y in range(0, self._sim.height, self.height):
-                self.blit_list.append((self.image, (x, y)))
-        self._sim.window.blits(self.blit_list)
+    def update(self) -> None:
+        self.rect = pygame.Rect(0, 0, self.sim.width // 2, self.sim.height)
+        super().update()
+
+
+class ViewRight(View):
+
+    def __init__(self, sim: Simulator) -> None:
+        self.rect = pygame.Rect(sim.width // 2, 0, sim.width // 2, sim.height)
+        super().__init__(sim)
+
+    def update(self) -> None:
+        self.rect = pygame.Rect(self.sim.width // 2, 0,
+                                self.sim.width // 2, self.sim.height)
+        super().update()
 
 
 class Road:
 
-    def __init__(self, view: Simulator.View) -> None:
+    def __init__(self, view: View) -> None:
         self.view = view
-        self.get_view = view.get_view
-        self.road_width = int(self.window.get_width() * 0.05)
-        self._is_active = False
-        self._tl = TrafficLight(self)
-        self._cars: list[Car] = []
-        self._lane_left = LaneLeft(self)
-        self._lane_straight = LaneStraight(self)
-        self._lane_right = LaneRight(self)
-        self._lanes = [self._lane_left, self._lane_straight, self._lane_right]
+        self.light = TrafficLight(self)
+        self.lane_left = LaneLeft(self)
+        self.lane_straight = LaneStraight(self)
+        self.lane_right = LaneRight(self)
+        self.lanes = [self.lane_left, self.lane_straight, self.lane_right]
+        self.rect = self.get_bound()
+        self.light_rect = self.get_light_bound()
+        self.cars: list[Car] = []
 
     @property
+    def is_active(self) -> bool:
+        return True if self.light.state == State.Light.GREEN else False
+    @property
     def state(self) -> bool:
-        return self._is_active
+        return self.light.state
+
+    @state.setter
+    def state(self, state: int) -> None:
+        self.light.state = state
+
+    @property
+    def road_width(self) -> int:
+        return int(self.view.rect.height * 0.1)
 
     @property
     def window(self) -> pygame.Surface:
         return self.view.sim.window
 
-    def switch_state(self) -> None:
-        self._is_active = not self._is_active
-        if self._is_active:
-            self._tl.switch_to_green()
-        else:
-            self._tl.switch_to_red()
-
     def add_car(self, direction: int) -> None:
-        self._cars.append(Car(self._lanes[direction]))
+        self.cars.append(Car(self.lanes[direction]))
 
     def update(self) -> None:
-        for car in self._cars:
+        if self.view.sim.needs_refresh:
+            self.rect = self.get_bound()
+            self.light_rect = self.get_light_bound()
+        for car in self.cars:
             car.update()
+
+    def move(self) -> None:
+        for car in self.cars:
+            car.move()
+
+    @abstractmethod
+    def get_light_coords(self) -> tuple[int, int]:
+        ...
 
     @abstractmethod
     def direction(self) -> int:
@@ -325,10 +289,14 @@ class Road:
     def get_light_bound(self) -> pygame.Rect:
         ...
 
-    def draw(self) -> None:
-        pygame.draw.rect(self.window, self.color, self.get_bound(), 2)
-        pygame.draw.rect(self.window, self.color, self.get_light_bound(), 5)
-        for car in self._cars:
+    def draw_debug(self) -> None:
+        if self.view.sim.needs_refresh:
+            self.rect = self.get_bound()
+            self.light_rect = self.get_light_bound()
+
+        pygame.draw.rect(self.window, self.color, self.rect, 2)
+        pygame.draw.rect(self.window, self.color, self.light_rect, 5)
+        for car in self.cars:
             car.draw()
 
 
@@ -343,20 +311,30 @@ class RoadTop(Road):
         return 0
 
     def get_bound(self) -> pygame.Rect:
-        view = self.get_view()
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
         x = view[2] // 2 - self.road_width + view[0]
-        y = 0 # + view[1]
+        y = 0  # + view[1]
         w = self.road_width
         h = view[3]
         return pygame.Rect(x, y, w, h)
 
     def get_light_bound(self) -> pygame.Rect:
-        view = self.get_view()
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
         x = view[2] // 2 - self.road_width + view[0]
         y = view[3] // 2 - self.road_width
         w = self.road_width
         h = 5
         return pygame.Rect(x, y, w, h)
+
+    def get_light_coords(self) -> tuple[int, int]:
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
+        x = view[2] // 2 - self.road_width * 2
+        y = view[3] // 2 - self.road_width * 2
+        return x, y
+
 
 class RoadRight(Road):
 
@@ -365,7 +343,8 @@ class RoadRight(Road):
         return Color.RED
 
     def get_bound(self) -> pygame.Rect:
-        view = self.get_view()
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
         x = 0 + view[0]
         y = view[3] // 2 - self.road_width
         w = view[2]
@@ -373,16 +352,25 @@ class RoadRight(Road):
         return pygame.Rect(x, y, w, h)
 
     def get_light_bound(self) -> pygame.Rect:
-        view = self.get_view()
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
         x = view[2] // 2 + self.road_width + view[0]
         y = view[3] // 2 - self.road_width
         w = 5
         h = self.road_width
         return pygame.Rect(x, y, w, h)
 
+    def get_light_coords(self) -> tuple[int, int]:
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
+        x = view[2] // 2 + self.road_width * 2
+        y = view[3] // 2 - self.road_width * 2
+        return x, y
+
     @property
     def direction(self) -> int:
         return 1
+
 
 class RoadBottom(Road):
     @property
@@ -390,24 +378,34 @@ class RoadBottom(Road):
         return Color.BLUE
 
     def get_bound(self) -> pygame.Rect:
-        view = self.get_view()
-        x = (view[2] // 2 ) + view[0]
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
+        x = (view[2] // 2) + view[0]
         y = 0
         w = self.road_width
         h = view[3]
         return pygame.Rect(x, y, w, h)
 
     def get_light_bound(self) -> pygame.Rect:
-        view = self.get_view()
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
         x = (view[2] // 2) + view[0]
         y = view[3] // 2 + self.road_width
         w = self.road_width
         h = 5
         return pygame.Rect(x, y, w, h)
 
+    def get_light_coords(self) -> tuple[int, int]:
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
+        x = view[2] // 2 + self.road_width * 2
+        y = view[3] // 2 + self.road_width * 2
+        return x, y
+
     @property
     def direction(self) -> int:
         return 2
+
 
 class RoadLeft(Road):
 
@@ -416,7 +414,8 @@ class RoadLeft(Road):
         return Color.BLACK
 
     def get_bound(self) -> pygame.Rect:
-        view = self.get_view()
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
         x = 0 + view[0]
         y = view[3] // 2
         w = view[2]
@@ -424,85 +423,85 @@ class RoadLeft(Road):
         return pygame.Rect(x, y, w, h)
 
     def get_light_bound(self) -> pygame.Rect:
-        view = self.get_view()
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
         x = view[2] // 2 - self.road_width + view[0]
         y = view[3] // 2
         w = 5
         h = self.road_width
         return pygame.Rect(x, y, w, h)
 
+    def get_light_coords(self) -> tuple[int, int]:
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
+        x = view[2] // 2 - self.road_width * 2
+        y = view[3] // 2 + self.road_width * 2
+        return x, y
+
     @property
     def direction(self) -> int:
         return 3
 
 
-
 class Lane:
 
-    LEFT = 0
-    STRAIGHT = 1
-    RIGHT = 2
-
-    @abstractmethod
     def __init__(self, road: Road) -> None:
-        self._road = road
-        view = road.get_view()
-        if isinstance(road, RoadTop):
-            x = view[2] // 2 - self.road.road_width * 0.8
+        self.road = road
+        self.view = road.view
+
+    def get_car_spawn(self) -> tuple[int, int]:
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
+        print(view)
+        if isinstance(self.road, RoadTop):
+            x = (view[2] // 2 - self.road.road_width * 0.8) + view[0]
             y = -100
-        elif isinstance(road, RoadRight):
-            x = view[2] + 100
+        elif isinstance(self.road, RoadRight):
+            x = (view[2] + 100) + view[0]
             y = view[3] // 2 - self.road.road_width * 0.8
-        elif isinstance(road, RoadBottom):
-            x = view[2] // 2 + self.road.road_width * 0.6
+        elif isinstance(self.road, RoadBottom):
+            x = (view[2] // 2 + self.road.road_width * 0.6) + view[0]
             y = view[3] + 100
         else:
-            x = -100
+            x = -100 + view[0]
             y = view[3] // 2 + self.road.road_width * 0.6
-        self.car_spawn = (x, y)
+        return (x, y)
 
     @property
-    def window(self) -> pygame.Surface:
-        return self._road.window
-
-    @property
-    def road(self) -> Road:
-        return self._road
+    def car_spawn(self) -> tuple[int, int]:
+        return self.get_car_spawn()
 
     @property
     def width(self) -> int:
-        return self._road.road_width // 4
+        return self.road.road_width // 4
 
-    @abstractmethod
-    def direction(self) -> int:
-        ...
+    def update(self) -> None:
+        self._car_spawn = self.get_car_spawn()
 
-    @property
-    def spawnpoint(self) -> tuple[int, int]:
-        return self.car_spawn
 
 class LaneLeft(Lane):
 
-    def __init__(self, road: Road) -> None:
-        self._road = road
-        view = road.get_view()
-        if isinstance(road, RoadTop):
-            x = view[2] // 2 - self.road.road_width // 3
+    def get_car_spawn(self) -> tuple[int, int]:
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
+        if isinstance(self.road, RoadTop):
+            x = (view[2] // 2 - self.road.road_width // 3) + view[0]
             y = -100
-        elif isinstance(road, RoadRight):
-            x = view[2] + 100
+        elif isinstance(self.road, RoadRight):
+            x = (view[2] + 100) + view[0]
             y = view[3] // 2 - self.road.road_width // 3
-        elif isinstance(road, RoadBottom):
-            x = view[2] // 2 + self.road.road_width * 0.2
+        elif isinstance(self.road, RoadBottom):
+            x = (view[2] // 2 + self.road.road_width * 0.2) + view[0]
             y = view[3] + 100
         else:
-            x = -100
+            x = -100 + view[0]
             y = view[3] // 2 + self.road.road_width * 0.2
-        self.car_spawn = (x, y)
+        return (x, y)
 
     @property
     def direction(self) -> int:
         return self.LEFT
+
 
 class LaneStraight(Lane):
 
@@ -510,9 +509,6 @@ class LaneStraight(Lane):
     def direction(self) -> int:
         return self.STRAIGHT
 
-    @property
-    def spawnpoint(self) -> tuple[int, int]:
-        return self.car_spawn
 
 class LaneRight(Lane):
 
@@ -520,116 +516,107 @@ class LaneRight(Lane):
     def direction(self) -> int:
         return self.RIGHT
 
-    @property
-    def spawnpoint(self) -> tuple[int, int]:
-        return self.car_spawn
-
 
 class Car:
 
-    SPEED: float = 1
-    ACCEL: float = 2
+    BASE_SPEED = 200.0
+    BASE_ACCEL = 100.0
 
-    # STATIONARY = 0
     ACCELERATING = 1
     DECELERATING = 2
-
-
-    @property
-    def position(self) -> tuple[int, int]:
-        return self.rect.x, self.rect.y
-
-    @property
-    def velocity(self) -> list[int, int]:
-        return self._velocity
-
-    @velocity.setter
-    def velocity(self, value: list[int, int]) -> None:
-        self._velocity = value
 
     def __init__(self,
                  lane: Lane,
                  *,
                  speed: Optional[float] = None,
-                 accel: Optional[float] = None) -> None:
-        # self._color = random.randint(0, 2)
-        self._color = "0"  # Not Implemented: Random Color
-        self._lane = lane
+                 accel: Optional[float] = None
+                 ) -> None:
+        print(f"[Car.__init__] Creating car in lane {lane.road.direction}")
+        self.lane = lane
 
-        self.width = (lane.width - 1, lane.width - 1)
-
+        self.size = (30, 30)
+        self.old_view_rect = lane.view.rect.width, lane.view.rect.height
         r_modifier = random.random()
-        self._speed = speed or Car.SPEED + r_modifier * 0.5
+        self._speed = speed or Car.BASE_SPEED + r_modifier
         r_modifier = random.random()
-        self._accel = accel or Car.ACCEL + r_modifier * 0.5
-        x, y = lane.spawnpoint
-
-        # random num from -1 to 1
+        self.accel = accel or Car.BASE_ACCEL + r_modifier
+        x, y = lane.car_spawn
         ran = [random.uniform(-2, 2), random.uniform(-2, 2)]
         x = x + ran[0]
         y = y + ran[1]
+        self.rect = pygame.Rect(x, y, self.size[0], self.size[1])
+        self.x = x
+        self.y = y
 
-        self.rect = pygame.Rect(x, y, *self.width)
-
-        self.light_bound = self._lane.road.get_light_bound()
+        self.light_bound = self.lane.road.get_light_bound()
         self.state = Car.ACCELERATING
         self.time = time.time()
 
-        self._velocity = [0, 0]
-
+        self.velocity: list[float] = [0, 0]
         road_dir = lane.road.direction
+        ran = random.randint(0, 3)
+        ran += 1
         if road_dir == 0:
-            self.orientaion = 180 # Road from the top, car faces down
+            print("[Car.__init__] Car on top road")
+            self.orientaion = 180  # Road from the top, car faces down
             self.left = lane.road.view.road_right
             self.right = lane.road.view.road_left
             self.opposite = lane.road.view.road_bottom
+            self.offset = 0, self.size[0] + ran
             self.lookahead = pygame.Rect(
-                x, y + self.width[0], *self.width)
-        if road_dir == 1:
-            self.orientaion = 270 # Road from the right, car faces left
+                x, y + self.offset[1], self.size[0], self.size[1] * 2)
+        elif road_dir == 1:
+            print("[Car.__init__] Car on right road")
+            self.orientaion = 270  # Road from the right, car faces left
             self.left = lane.road.view.road_top
             self.right = lane.road.view.road_bottom
             self.opposite = lane.road.view.road_left
+            self.offset = -(self.size[0] * 2 + ran), 0
             self.lookahead = pygame.Rect(
-                x - self.width[0], y, *self.width)
-        if road_dir == 2:
-            self.orientaion = 0 # Road from the bottom, car faces up
+                x + self.offset[0], y, self.size[0] * 2, self.size[1])
+        elif road_dir == 2:
+            print("[Car.__init__] Car on bottom road")
+            self.orientaion = 0  # Road from the bottom, car faces up
             self.left = lane.road.view.road_right
             self.right = lane.road.view.road_left
             self.opposite = lane.road.view.road_top
+            self.offset = 0, -(self.size[0] * 2 + ran)
             self.lookahead = pygame.Rect(
-                x, y - self.width[0], *self.width)
-        if road_dir == 3:
-            self.orientaion = 90 # Road from the left, car faces right
+                x, y + self.offset[1], self.size[0], self.size[1] * 2)
+        else:
+            print("[Car.__init__] Car on left road")
+            self.orientaion = 90  # Road from the left, car faces right
             self.left = lane.road.view.road_top
             self.right = lane.road.view.road_bottom
             self.opposite = lane.road.view.road_right
+            self.offset = self.size[0] + ran, 0
             self.lookahead = pygame.Rect(
-                x + self.width[0], y, *self.width)
+                x + self.offset[0], y, self.size[0] * 2, self.size[1])
 
-        # self._images: list[pygame.Surface] = []
-        # for i in range(16):
-        #     image = pygame.image.load(os.path.join(
-        #         "Assets", "cars", self._color, str(i) + ".png"))
-        #     image = pygame.transform.scale(image, (self.width))
-        #     self._images.append(image)
+    @property
+    def speed(self) -> float:
+        return self._speed * self.simulator.speed
 
     @property
     def road(self) -> Road:
-        return self._lane.road
+        return self.lane.road
+
+    @property
+    def view(self) -> View:
+        return self.lane.view
 
     @property
     def simulator(self) -> Simulator:
-        return self._lane.road._sim
+        return self.lane.road.view.sim
 
     @property
     def direction(self) -> int:
-        return self._lane.direction
+        return self.lane.direction
 
     def check(self) -> None:
-        car_rects = [car.rect for car in self.road._cars]
+        car_rects = [car.rect for car in self.road.cars if car is not self]
         if self.lookahead.colliderect(self.road.get_light_bound()):
-            if not self.road._is_active:
+            if not self.road.is_active:
                 self.decelerate()
                 return
             elif self.opposite.get_bound().collidelist(car_rects) != -1:
@@ -655,103 +642,106 @@ class Car:
             self.state = Car.ACCELERATING
             self.time = time.time()
 
-    def move(self) -> None:
-        # print(f"Initial State: {self.state}, Initial Velocity: {self.velocity}")
-        t = min(1, time.time() - self.time)
-        vol = ease_in_out_quad(t)
+    def move(self):
+        current_time = time.time()
+        dt = self.simulator.dt
+        game_speed = self.simulator.speed
+        if game_speed == 0.0:
+            return
+        t = min(1, (current_time - self.time) / dt)
+        vol = ease(t) * game_speed
 
+        # Scale velocity change by the time speed factor
+        vol = self.speed * vol
         if self.state == Car.ACCELERATING:
-            velocity_change = vol
+            velocity_change = (vol) * dt
         else:
-            velocity_change = -vol
+            velocity_change = -(vol * 5) * dt
 
-        road_dir = self._lane.road.direction
+        road_dir = self.lane.road.direction
         if road_dir == 0:  # Down
-            if self.state == Car.DECELERATING:
-                # Only slow down to 0
-                self.velocity[1] = max(0, self.velocity[1] + velocity_change)
-            else:
-                self.velocity[1] = min(
-                    self._speed, self.velocity[1] + velocity_change)
+            self.velocity[1] += velocity_change
+            self.velocity[1] = max(0.0, min(self.speed, self.velocity[1])
+                                   ) if self.state == Car.DECELERATING else min(self.speed, self.velocity[1])
         elif road_dir == 1:  # Left
-            if self.state == Car.DECELERATING:
-                # Only slow down to 0
-                self.velocity[0] = min(0, self.velocity[0] - velocity_change)
-            else:
-                self.velocity[0] = max(-self._speed,
-                                    self.velocity[0] - velocity_change)
+            self.velocity[0] -= velocity_change
+            self.velocity[0] = min(0.0, max(-self.speed, self.velocity[0])
+                                   ) if self.state == Car.DECELERATING else max(-self.speed, self.velocity[0])
         elif road_dir == 2:  # Up
-            if self.state == Car.DECELERATING:
-                # Only slow down to 0
-                self.velocity[1] = min(0, self.velocity[1] - velocity_change)
-            else:
-                self.velocity[1] = max(-self._speed,
-                                    self.velocity[1] - velocity_change)
+            self.velocity[1] -= velocity_change
+            self.velocity[1] = min(0.0, max(-self.speed, self.velocity[1])
+                                   ) if self.state == Car.DECELERATING else max(-self.speed, self.velocity[1])
         elif road_dir == 3:  # Right
-            if self.state == Car.DECELERATING:
-                # Only slow down to 0
-                self.velocity[0] = max(0, self.velocity[0] + velocity_change)
-            else:
-                self.velocity[0] = min(
-                    self._speed, self.velocity[0] + velocity_change)
+            self.velocity[0] += velocity_change
+            self.velocity[0] = max(0.0, min(self.speed, self.velocity[0])
+                                   ) if self.state == Car.DECELERATING else min(self.speed, self.velocity[0])
 
+        self.x += self.velocity[0] * dt
+        self.y += self.velocity[1] * dt
 
-        self.rect.x = self.rect.x + self.velocity[0]
-        self.rect.y = self.rect.y + self.velocity[1]
+        self.rect.x = int(self.x)
+        self.rect.y = int(self.y)
 
-        self.lookahead.x  = self.lookahead.x + self.velocity[0]
-        self.lookahead.y = self.lookahead.y + self.velocity[1]
-        # print(f"Updated State: {self.state}, Updated Velocity: {self.velocity}, New Position: ({self.rect.x}, {self.rect.y})")
+        self.lookahead.x = self.rect.x + self.offset[0]
+        self.lookahead.y = self.rect.y + self.offset[1]
 
     def update(self) -> None:
         self.check()
-        self.move()
+        self.rect = self.update_position()
+
+    def update_position(self) -> pygame.Rect:
+        new_size = self.road.view.rect.size
+        original_size = self.old_view_rect
+
+        # Calculate scale factors based on the change in window size
+        scale_x = new_size[0] / original_size[0]
+        scale_y = new_size[1] / original_size[1]
+
+        # Scale the floating-point coordinates
+        self.x *= scale_x
+        self.y *= scale_y
+
+        # Update the rectangle for rendering using the scaled floating-point values
+        self.rect.x *= int(self.x)
+        self.rect.y *= int(self.y)
+
+        # Optionally scale the size of the rectangle if necessary
+        # self.rect.width = int(self.rect.width * scale_y)
+        # self.rect.height = int(self.rect.height * scale_y)
+
+        # Update the old view rectangle to the new size for future resizes
+        self.old_view_rect = new_size
+
+        return self.rect
 
     def draw(self) -> None:
-        # draw a rect
         pygame.draw.rect(self.road.window, Color.GREEN, self.rect)
+        pygame.draw.rect(self.road.window, Color.GRAY, self.lookahead, 2)
 
 
 class TrafficLight:
 
     def __init__(self, road: Road) -> None:
-        self._road = road
-        self._state = State.Light.RED
-
-        size = int(road.window.get_width() * 0.025)
-        self._size: tuple[int, int] = (size, size)
-        self.base = pygame.Surface(self._size)
+        self.road = road
+        self.state = State.Light.RED
 
     @property
-    def window(self) -> pygame.Surface:
-        return self._road.window
+    def coords(self) -> tuple[int, int]:
+        return self.road.get_light_coords()
 
-    @property
-    def state(self) -> State.Light:
-        return self._state
-
-    @state.setter
-    def state(self, state: State.Light) -> None:
-        self._state = state
-
-    @property
     def color(self) -> tuple[int, int, int]:
-        if self._state == State.Light.RED:
+        if self.state == State.Light.RED:
             return Color.RED
-        elif self._state == State.Light.YELLOW:
+        elif self.state == State.Light.YELLOW:
             return Color.YELLOW
-        elif self._state == State.Light.GREEN:
+        elif self.state == State.Light.GREEN:
             return Color.GREEN
 
-    def switch_to_green(self) -> None:
-        self._state = State.Light.GREEN
-
-    def switch_to_red(self) -> None:
-        self._state = State.Light.YELLOW
-        self._switching = time.time()
-
     def draw(self) -> None:
-        ...
+        x, y = self.coords
+        pygame.draw.rect(self.road.window, self.color(), (x, y, *self.road.light._size))
+
+
 
 
 class State:
@@ -779,6 +769,7 @@ class Color:
     YELLOW = (230, 230, 0)
     GRAY = (200, 200, 200)
     PURPLE = (150, 0, 150)
+    CYAN = (0, 230, 230)
 
     MENU_BG = (1, 1, 1)
 
@@ -794,19 +785,250 @@ class Direction:
     DOWN = 2
     LEFT = 3
 
-    # def __len__(self) -> int:
-    #     return 4
+class UIElement:
 
-    # def __getitem__(self, index) -> int:
-    #     return self[index]
+    TOP_L = 0
+    TOP = 1
+    TOP_R = 2
+    LEFT = 3
+    CENTER = 4
+    RIGHT = 5
+    BOTTOM_L = 6
+    BOTTOM = 7
+    BOTTOM_R = 8
 
-    # def __iter__(self):
-    #     self.num = 0
-    #     return self
+    BACKGROUND = 0
+    MIDDLEGROUND = 1
+    FOREGROUND = 2
 
-    # def __next__(self):
-    #     if self.num < len(self):
-    #         self.num += 1
-    #         return self[self.num - 1]
-    #     else:
-    #         raise StopIteration
+    def __init__(self,
+                 sim: Simulator,
+                 view: Optional[View] = None,
+                 *,
+                 name: str = "",
+                 anchor: int = 0,
+                 offset: tuple[int, int] = (0, 0),
+                 color: tuple[int, int, int] = Color.WHITE,
+                 width: int = 20,
+                 height: int = 10,
+                 layer: int = 0,
+                 auto_margin: bool = True,
+                 ) -> None:
+        self.sim = sim
+        if view:
+            self.view = view
+        else:
+            self.view = self.sim
+        self.name = name
+        self.anchor = anchor
+        self.offset = offset
+        self.color = color
+        self.z = layer
+        self.width = width
+        self.height = height
+        self.margin = auto_margin
+        self.hidden = False
+        self.margin = 10 if auto_margin else 0
+        self.rect = pygame.Rect(0, 0, width, height)
+        self.update()
+
+
+    def load(self) -> None:
+        self.sim.add_element(self)
+
+    @property
+    def x(self) -> int:
+        return self.rect.x
+
+    @x.setter
+    def x(self, value: int) -> None:
+        self.rect.x = value
+
+    @property
+    def y(self) -> int:
+        return self.rect.y
+
+    @y.setter
+    def y(self, value: int) -> None:
+        self.rect.y = value
+
+    def margin(self, value: int) -> None:
+        self.margin = value
+
+    def hide(self) -> bool:
+        self.hidden = True
+
+    def show(self) -> bool:
+        self.hidden = False
+
+    def update(self) -> None:
+
+        v_width, v_height = self.view.width, self.view.height
+        x, y = self.offset
+        m = self.margin
+
+        match self.anchor:
+            case UIElement.TOP_L:
+                self.rect.x = x + m
+                self.rect.y = y + m
+            case UIElement.TOP:
+                self.rect.centerx = v_width // 2 + x
+                self.rect.y = y + m
+            case UIElement.TOP_R:
+                self.rect.right = v_width + x - m
+                self.rect.y = y + m
+            case UIElement.LEFT:
+                self.rect.x = x + m
+                self.rect.centery = v_height // 2 + y
+            case UIElement.CENTER:
+                self.rect.centerx = v_width // 2 + x
+                self.rect.centery = v_height // 2 + y
+            case UIElement.RIGHT:
+                self.rect.right = v_width + x - m
+                self.rect.centery = v_height // 2 + y
+            case UIElement.BOTTOM_L:
+                self.rect.x = x + m
+                self.rect.bottom = v_height + y - m
+            case UIElement.BOTTOM:
+                self.rect.centerx = v_width // 2 + x
+                self.rect.bottom = v_height + y - m
+            case UIElement.BOTTOM_R:
+                self.rect.right = v_width + x - m
+                self.rect.bottom = v_height + y - m
+
+    @abstractmethod
+    def draw(self) -> None:
+        ...
+
+
+class Text(UIElement):
+
+    def __init__(self,
+                 sim: Simulator,
+                 view: Optional[View] = None,
+                 *,
+                 name: str = "",
+                 anchor: int = 0,
+                 offset: tuple[int, int] = (0, 0),
+                 color: tuple[int, int, int] = Color.WHITE,
+                 width: int = 20,
+                 height: int = 10,
+                 layer: int = 0,
+                 text: str | Callable[[Simulator], str] = "",
+                 auto_margin: bool = True,
+                 font: pygame.font.Font,
+                 dynamic: bool = False
+                 ) -> None:
+        self.font = font
+        self.text = text
+        super().__init__(sim, view,
+                         name=name,
+                         anchor=anchor,
+                         offset=offset,
+                         color=color,
+                         width=width,
+                         height=height,
+                         layer=layer,
+                         auto_margin=auto_margin
+                         )
+
+    def update(self) -> None:
+        self.text_to_display = self.text(self.sim) if callable(
+            self.text) else self.text
+
+        self.text_surface = self.font.render(self.text_to_display, True, self.color)
+
+        self.text_width, self.text_height = self.text_surface.get_size()
+
+        self.rect.width = self.text_width
+        self.rect.height = self.text_height
+
+        self.text_x = self.rect.x
+        self.text_y = self.rect.y
+        super().update()
+
+
+    def draw(self) -> None:
+        # if not self.sim.needs_refresh:
+        #     return
+        self.sim.window.fill(Color.WHITE, self.rect)
+        self.update()
+        self.sim.window.blit(self.text_surface, (self.text_x, self.text_y))
+        pygame.display.update(self.rect)
+
+
+class Button(UIElement):
+
+    def __init__(self,
+                 sim: Simulator,
+                 view: Optional[View] = None,
+                 *,
+                 name: str = "",
+                 anchor: int = 0,
+                 offset: tuple[int, int] = (0, 0),
+                 color: tuple[int, int, int] = Color.WHITE,
+                 width: int = 20,
+                 height: int = 10,
+                 layer: int = 0,
+                 auto_margin: bool = True,
+                 font: pygame.font.Font,
+                 text: str | Callable[[Simulator], str] = "",
+                 action: Callable[[Simulator], None] = lambda: None,
+                 button_color: tuple[int, int, int] = Color.BUTTON,
+                 hover_color: tuple[int, int, int] = Color.BUTTON_HOVER,
+                 border_radius: int = -1,
+                 ) -> None:
+        self.font = font
+        self.text = text
+        self.button_color = button_color
+        self.hover_color = hover_color
+        self.border_radius = border_radius
+        self.action = action
+        super().__init__(sim, view,
+                         name=name,
+                         anchor=anchor,
+                         offset=offset,
+                         color=color,
+                         width=width,
+                         height=height,
+                         layer=layer,
+                         auto_margin=auto_margin
+                         )
+
+    def load(self) -> None:
+        self.sim.add_button(self)
+
+
+    def handle_event(self, event: pygame.event):
+        mouse_pos = event.pos  # Get the position of the mouse when clicked
+        if self.rect.collidepoint(mouse_pos):
+            self.action(self.sim)  # Execute the button's action
+
+    def draw(self) -> None:
+        if self.sim.needs_refresh:
+            self.update()
+        surface = self.sim.window
+        text_to_display = self.text(self.sim) if callable(self.text) else self.text
+
+        # Render the text
+        text_surface = self.font.render(text_to_display, True, self.color)
+
+        # Calculate text width and height
+        text_width, text_height = text_surface.get_size()
+
+        # Calculate position based on anchor and offset
+        text_x = self.rect.x + (self.rect.width - text_width) // 2
+        text_y = self.rect.y + (self.rect.height - text_height) // 2
+
+        mouse_pos = pygame.mouse.get_pos()
+        if self.rect.collidepoint(mouse_pos):
+            color = self.hover_color
+        else:
+            color = self.button_color
+
+        # Draw the button background
+        pygame.draw.rect(surface, color, self.rect,
+                        border_radius=self.border_radius)
+
+        # Blit the text onto the surface at the calculated position
+        surface.blit(text_surface, (text_x, text_y))

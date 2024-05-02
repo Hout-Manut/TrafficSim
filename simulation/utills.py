@@ -1,6 +1,16 @@
 import numpy as np
 
 
+def get_mid_coord(x1, y1, x2, y2):
+    a = np.array((x1, y1))
+    b = np.array((x2, y2))
+    return tuple((a + b) / 2)
+
+
+def ease_in_out_sine(t):
+    return -(np.cos(np.pi * np.array(t)) - 1) / 2
+
+
 def ease_in_out_quad(t: float) -> float:
     """
     Quadratic ease-in-out curve
@@ -18,3 +28,15 @@ def ease_in_out_quad(t: float) -> float:
     if t < 0.5:
         return 2 * t * t
     return -1 + (4 - 2 * t) * t
+
+def ease_in_out_cubic(t: float) -> float:
+    t *= 2
+    if t < 1:
+        return t * t * t / 2
+    else:
+        t -= 2
+        return (t * t * t + 2) / 2
+
+
+def ease(t: float) -> float:
+    return ease_in_out_sine(t)

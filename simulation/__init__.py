@@ -1,4 +1,8 @@
 from .classes import (
+    Color,
+    State,
     Simulator,
-    Color
+    UIElement,
+    Text,
+    Button,
 )

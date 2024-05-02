@@ -3,10 +3,10 @@ import time
 
 import pygame
 
-import simulation
+from simulation import Color, Simulator, UIElement, Text, Button, State
 
 RANDOMLY_ADD_CARS = pygame.USEREVENT + 1
-TIME_CONTROL = pygame.USEREVENT + 2
+REFRESH = pygame.USEREVENT + 2
 
 HD = 1280, 720
 FHD = 1920, 1080
@@ -22,35 +22,94 @@ window = pygame.display.set_mode((WIDTH, HEIGHT), flags=flags)
 pygame.display.set_caption("Traffic Simulator")
 clock = pygame.time.Clock()
 
-def main(sim: simulation.Simulator):
+def main(sim: Simulator):
 
     pygame.time.set_timer(RANDOMLY_ADD_CARS, 1000)
-    pygame.time.set_timer(TIME_CONTROL, 14)
+    pygame.time.set_timer(REFRESH, 2000)
+    sim.pause()
+    draw_fps(sim)
+    sim.needs_refresh = True
+    load_components(sim)
 
-    sim.start()
-    time_updated = 0
     while sim.running:
-        clock.tick(FPS)
+        dt = clock.tick(FPS) / 1000
+        sim.dt = dt
         check_events(sim)
 
-        window.fill((255, 255, 255))
-
         # if time.time() - time_updated >= 0.5:
+        window.fill(Color.WHITE)
 
-        sim.needs_refresh = True
-
-        sim.draw_boundaries()
-
+        sim.draw()
+        sim.draw_debug()
+        sim.update()
+        sim.move()
 
         draw_fps(sim)
 
+        if sim.needs_refresh:
+            window.fill(Color.WHITE)
+        sim.needs_refresh = False
         pygame.display.update()
 
 
-def check_events(sim: simulation.Simulator):
-      for event in pygame.event.get():
+def load_components(sim: Simulator):
+    base_font = pygame.font.Font(
+        os.path.join("Assets", "Roboto-Light.ttf"), 24)
+    speed_text = Text(sim,
+                      anchor=UIElement.TOP_L,
+                      color=Color.BLACK,
+                      font=base_font,
+                      text=lambda sim: f"Speed: {sim.speed_str}",
+                      layer=UIElement.FOREGROUND,
+                      dynamic=True
+                      )
+    speed_text.load()
+    base_font = pygame.font.Font(
+        os.path.join("Assets", "Roboto-Light.ttf"), 20)
+    speed_inc_button = Button(sim,
+                              anchor=UIElement.TOP_L,
+                              offset=(0, 50),
+                              color=Color.CYAN,
+                              font=base_font,
+                              text="+ Speed",
+                              width=100,
+                              height=30,
+                              layer=UIElement.FOREGROUND,
+                              border_radius=5,
+                              action=lambda sim: sim.increase_speed()
+                              )
+    speed_inc_button.load()
+    pause_button = Button(sim,
+                          anchor=UIElement.TOP_L,
+                          offset=(110, 50),
+                          color=Color.CYAN,
+                          font=base_font,
+                          text="Pause",
+                          width=100,
+                          height=30,
+                          layer=UIElement.FOREGROUND,
+                          border_radius=5,
+                          action=lambda sim: sim.pause()
+                          )
+    pause_button.load()
+    speed_dec_button = Button(sim,
+                              anchor=UIElement.TOP_L,
+                              offset=(220, 50),
+                              color=Color.CYAN,
+                              font=base_font,
+                              text="- Speed",
+                              width=100,
+                              height=30,
+                              layer=UIElement.FOREGROUND,
+                              border_radius=5,
+                              action=lambda sim: sim.decrease_speed()
+                              )
+    speed_dec_button.load()
+
+
+def check_events(sim: Simulator):
+    for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            sim.stop()
             pygame.quit()
             exit()
         elif event.type == pygame.VIDEORESIZE:
@@ -68,7 +127,7 @@ def check_events(sim: simulation.Simulator):
                     (event.w, event.h), pygame.RESIZABLE)
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                if sim.state == simulation.State.MENU:
+                if sim.state == State.MENU:
                     sim.stop()
                     pygame.quit()
                     exit()
@@ -76,20 +135,25 @@ def check_events(sim: simulation.Simulator):
                     sim.go_to_menu()
             elif event.key == pygame.K_F11:
                 sim.toggle_fullscreen()
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:
+                sim.handle_button_press(event)
         elif event.type == RANDOMLY_ADD_CARS:
-            sim.randomly_add_cars()
-        elif event.type == TIME_CONTROL:
-            sim.update()
+            if not sim.paused:
+                sim.randomly_add_cars()
 
 
-def draw_fps(sim: simulation.Simulator):
+def draw_fps(sim: Simulator):
     fps_counter = str(int(clock.get_fps()))
     font = pygame.font.Font(os.path.join("Assets", "Mada-Medium.ttf"), 24)
-    fps_text = font.render(fps_counter, True, simulation.Color.BLACK)
-    rec = window.blit(fps_text, (9, sim.height - 30))
+    fps_text = font.render(fps_counter, True, Color.BLACK)
+    fps_rect = fps_text.get_rect()
+    fps_rect.bottomleft = (9, HEIGHT - 30)
+    window.fill(Color.WHITE, fps_rect)
+    window.blit(fps_text, (9, sim.height - 30))
 
 
 if __name__ == "__main__":
     is_fullscreen = False
-    sim = simulation.Simulator(window, device_info, is_fullscreen, flags)
+    sim = Simulator(window, device_info, is_fullscreen, RANDOMLY_ADD_CARS)
     main(sim)
