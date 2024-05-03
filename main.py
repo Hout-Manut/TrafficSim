@@ -24,7 +24,7 @@ clock = pygame.time.Clock()
 
 def main(sim: Simulator):
 
-    pygame.time.set_timer(RANDOMLY_ADD_CARS, 1000)
+    pygame.time.set_timer(RANDOMLY_ADD_CARS, 100)
     pygame.time.set_timer(REFRESH, 2000)
     sim.pause()
     draw_fps(sim)
@@ -56,7 +56,8 @@ def load_components(sim: Simulator):
     base_font = pygame.font.Font(
         os.path.join("Assets", "Roboto-Light.ttf"), 24)
     speed_text = Text(sim,
-                      anchor=UIElement.TOP_L,
+                      anchor=UIElement.TOP_R,
+                      source=UIElement.TOP_R,
                       color=Color.BLACK,
                       font=base_font,
                       text=lambda sim: f"Speed: {sim.speed_str}",

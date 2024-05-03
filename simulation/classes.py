@@ -9,7 +9,7 @@ from typing import Callable, Optional
 import numpy as np
 import pygame
 
-from .utills import ease, get_mid_coord
+from .utills import ease
 
 
 class Simulator:
@@ -55,7 +55,7 @@ class Simulator:
     def increase_speed(self) -> None:
         if self.paused:
             self.pause()
-        self.time_speed = min(2.0, self.time_speed + 0.1)
+        self.time_speed = min(5.0, self.time_speed + 0.1)
         self.update_events()
 
     def decrease_speed(self) -> None:
@@ -65,7 +65,7 @@ class Simulator:
         self.update_events()
 
     def update_events(self) -> None:
-        pygame.time.set_timer(self.randomly_add_cars_event, int(1000 * self.time_speed))
+        pygame.time.set_timer(self.randomly_add_cars_event, int(1000 / self.time_speed))
 
     @property
     def dt(self) -> float:
@@ -89,6 +89,9 @@ class Simulator:
     def handle_button_press(self, event: pygame.event) -> None:
         for button in self.buttons:
             button.handle_event(event)
+
+    def toggle_lights(self) -> None:
+        ...
 
     def pause(self) -> None:
         self.paused = not self.paused
@@ -519,7 +522,7 @@ class LaneRight(Lane):
 
 class Car:
 
-    BASE_SPEED = 200.0
+    BASE_SPEED = 150.0
     BASE_ACCEL = 100.0
 
     ACCELERATING = 1
@@ -557,7 +560,7 @@ class Car:
         ran = random.randint(0, 3)
         ran += 1
         if road_dir == 0:
-            print("[Car.__init__] Car on top road")
+
             self.orientaion = 180  # Road from the top, car faces down
             self.left = lane.road.view.road_right
             self.right = lane.road.view.road_left
@@ -566,7 +569,7 @@ class Car:
             self.lookahead = pygame.Rect(
                 x, y + self.offset[1], self.size[0], self.size[1] * 2)
         elif road_dir == 1:
-            print("[Car.__init__] Car on right road")
+
             self.orientaion = 270  # Road from the right, car faces left
             self.left = lane.road.view.road_top
             self.right = lane.road.view.road_bottom
@@ -575,7 +578,7 @@ class Car:
             self.lookahead = pygame.Rect(
                 x + self.offset[0], y, self.size[0] * 2, self.size[1])
         elif road_dir == 2:
-            print("[Car.__init__] Car on bottom road")
+
             self.orientaion = 0  # Road from the bottom, car faces up
             self.left = lane.road.view.road_right
             self.right = lane.road.view.road_left
@@ -584,7 +587,7 @@ class Car:
             self.lookahead = pygame.Rect(
                 x, y + self.offset[1], self.size[0], self.size[1] * 2)
         else:
-            print("[Car.__init__] Car on left road")
+
             self.orientaion = 90  # Road from the left, car faces right
             self.left = lane.road.view.road_top
             self.right = lane.road.view.road_bottom
@@ -646,17 +649,18 @@ class Car:
         current_time = time.time()
         dt = self.simulator.dt
         game_speed = self.simulator.speed
-        if game_speed == 0.0:
-            return
         t = min(1, (current_time - self.time) / dt)
         vol = ease(t) * game_speed
+
+        if self.simulator.paused:
+            return
 
         # Scale velocity change by the time speed factor
         vol = self.speed * vol
         if self.state == Car.ACCELERATING:
-            velocity_change = (vol) * dt
+            velocity_change = (vol / 2) * dt
         else:
-            velocity_change = -(vol * 5) * dt
+            velocity_change = -(vol * 2) * dt
 
         road_dir = self.lane.road.direction
         if road_dir == 0:  # Down
@@ -702,8 +706,8 @@ class Car:
         self.y *= scale_y
 
         # Update the rectangle for rendering using the scaled floating-point values
-        self.rect.x *= int(self.x)
-        self.rect.y *= int(self.y)
+        self.rect.x = int(self.x)
+        self.rect.y = int(self.y)
 
         # Optionally scale the size of the rectangle if necessary
         # self.rect.width = int(self.rect.width * scale_y)
@@ -807,6 +811,7 @@ class UIElement:
                  *,
                  name: str = "",
                  anchor: int = 0,
+                 source: int = 0,
                  offset: tuple[int, int] = (0, 0),
                  color: tuple[int, int, int] = Color.WHITE,
                  width: int = 20,
@@ -820,7 +825,8 @@ class UIElement:
         else:
             self.view = self.sim
         self.name = name
-        self.anchor = anchor
+        self.anchor = anchor # frame anchor
+        self.source = source # element anchor
         self.offset = offset
         self.color = color
         self.z = layer
@@ -862,40 +868,71 @@ class UIElement:
     def show(self) -> bool:
         self.hidden = False
 
-    def update(self) -> None:
 
+    def update(self) -> None:
         v_width, v_height = self.view.width, self.view.height
         x, y = self.offset
         m = self.margin
 
+        # Determine outer anchor positions
         match self.anchor:
             case UIElement.TOP_L:
-                self.rect.x = x + m
-                self.rect.y = y + m
+                outer_x = x + m
+                outer_y = y + m
             case UIElement.TOP:
-                self.rect.centerx = v_width // 2 + x
-                self.rect.y = y + m
+                outer_x = v_width // 2 + x
+                outer_y = y + m
             case UIElement.TOP_R:
-                self.rect.right = v_width + x - m
-                self.rect.y = y + m
+                outer_x = v_width + x - m
+                outer_y = y + m
             case UIElement.LEFT:
-                self.rect.x = x + m
-                self.rect.centery = v_height // 2 + y
+                outer_x = x + m
+                outer_y = v_height // 2 + y
             case UIElement.CENTER:
-                self.rect.centerx = v_width // 2 + x
-                self.rect.centery = v_height // 2 + y
+                outer_x = v_width // 2 + x
+                outer_y = v_height // 2 + y
             case UIElement.RIGHT:
-                self.rect.right = v_width + x - m
-                self.rect.centery = v_height // 2 + y
+                outer_x = v_width + x - m
+                outer_y = v_height // 2 + y
             case UIElement.BOTTOM_L:
-                self.rect.x = x + m
-                self.rect.bottom = v_height + y - m
+                outer_x = x + m
+                outer_y = v_height + y - m
             case UIElement.BOTTOM:
-                self.rect.centerx = v_width // 2 + x
-                self.rect.bottom = v_height + y - m
+                outer_x = v_width // 2 + x
+                outer_y = v_height + y - m
             case UIElement.BOTTOM_R:
-                self.rect.right = v_width + x - m
-                self.rect.bottom = v_height + y - m
+                outer_x = v_width + x - m
+                outer_y = v_height + y - m
+
+        # Determine source adjustments within the element
+        match self.source:
+            case UIElement.TOP_L:
+                self.rect.x = outer_x
+                self.rect.y = outer_y
+            case UIElement.TOP:
+                self.rect.centerx = outer_x
+                self.rect.y = outer_y
+            case UIElement.TOP_R:
+                self.rect.right = outer_x
+                self.rect.y = outer_y
+            case UIElement.LEFT:
+                self.rect.x = outer_x
+                self.rect.centery = outer_y
+            case UIElement.CENTER:
+                self.rect.centerx = outer_x
+                self.rect.centery = outer_y
+            case UIElement.RIGHT:
+                self.rect.right = outer_x
+                self.rect.centery = outer_y
+            case UIElement.BOTTOM_L:
+                self.rect.x = outer_x
+                self.rect.bottom = outer_y
+            case UIElement.BOTTOM:
+                self.rect.centerx = outer_x
+                self.rect.bottom = outer_y
+            case UIElement.BOTTOM_R:
+                self.rect.right = outer_x
+                self.rect.bottom = outer_y
 
     @abstractmethod
     def draw(self) -> None:
@@ -910,6 +947,7 @@ class Text(UIElement):
                  *,
                  name: str = "",
                  anchor: int = 0,
+                 source: int = 0,
                  offset: tuple[int, int] = (0, 0),
                  color: tuple[int, int, int] = Color.WHITE,
                  width: int = 20,
@@ -926,6 +964,7 @@ class Text(UIElement):
                          name=name,
                          anchor=anchor,
                          offset=offset,
+                         source=source,
                          color=color,
                          width=width,
                          height=height,
@@ -966,6 +1005,7 @@ class Button(UIElement):
                  *,
                  name: str = "",
                  anchor: int = 0,
+                 source: int = 0,
                  offset: tuple[int, int] = (0, 0),
                  color: tuple[int, int, int] = Color.WHITE,
                  width: int = 20,
@@ -989,6 +1029,7 @@ class Button(UIElement):
                          name=name,
                          anchor=anchor,
                          offset=offset,
+                         source=source,
                          color=color,
                          width=width,
                          height=height,
