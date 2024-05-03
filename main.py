@@ -78,7 +78,6 @@ def load_components(sim: Simulator):
                               border_radius=5,
                               action=lambda sim: sim.increase_speed()
                               )
-    speed_inc_button.load()
     pause_button = Button(sim,
                           anchor=UIElement.TOP_L,
                           offset=(110, 50),
@@ -91,7 +90,6 @@ def load_components(sim: Simulator):
                           border_radius=5,
                           action=lambda sim: sim.pause()
                           )
-    pause_button.load()
     speed_dec_button = Button(sim,
                               anchor=UIElement.TOP_L,
                               offset=(220, 50),
@@ -104,7 +102,6 @@ def load_components(sim: Simulator):
                               border_radius=5,
                               action=lambda sim: sim.decrease_speed()
                               )
-    speed_dec_button.load()
 
 
 def check_events(sim: Simulator):

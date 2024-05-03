@@ -831,6 +831,7 @@ class UIElement:
         self.margin = 10 if auto_margin else 0
         self.rect = pygame.Rect(0, 0, width, height)
         self.update()
+        self.load()
 
 
     def load(self) -> None:
