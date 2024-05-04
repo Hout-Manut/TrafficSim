@@ -603,7 +603,7 @@ class Car:
         self.turn_rate = 90
         if road_dir == 0:
 
-            self.orientation = 90  # Road from the top, car faces down
+            self.ori_orientation = 90  # Road from the top, car faces down
             self.left = lane.road.view.road_right
             self.right = lane.road.view.road_left
             self.opposite = lane.road.view.road_bottom
@@ -612,7 +612,7 @@ class Car:
                 x, y + self.offset[1], self.size[0], self.size[1] * 2)
         elif road_dir == 1:
 
-            self.orientation = 180  # Road from the right, car faces left
+            self.ori_orientation = 180  # Road from the right, car faces left
             self.left = lane.road.view.road_bottom
             self.right = lane.road.view.road_top
             self.opposite = lane.road.view.road_left
@@ -621,7 +621,7 @@ class Car:
                 x + self.offset[0], y, self.size[0] * 2, self.size[1])
         elif road_dir == 2:
 
-            self.orientation = 270  # Road from the bottom, car faces up
+            self.ori_orientation = 270  # Road from the bottom, car faces up
             self.left = lane.road.view.road_left
             self.right = lane.road.view.road_right
             self.opposite = lane.road.view.road_top
@@ -630,13 +630,15 @@ class Car:
                 x, y + self.offset[1], self.size[0], self.size[1] * 2)
         else:
 
-            self.orientation = 0  # Road from the left, car faces right
+            self.ori_orientation = 0  # Road from the left, car faces right
             self.left = lane.road.view.road_top
             self.right = lane.road.view.road_bottom
             self.opposite = lane.road.view.road_right
             self.offset = self.size[0] + ran, 0
             self.lookahead = pygame.Rect(
                 x + self.offset[0], y, self.size[0] * 2, self.size[1])
+
+        self.orientation = self.ori_orientation
 
     @property
     def speed(self) -> float:
@@ -658,8 +660,13 @@ class Car:
         cars = self.road.view.get_all_cars()
         car_rects = [car.rect for car in cars if car is not self]
         oppo_cars = self.opposite.cars
+        left_cars = self.left.cars
 
         if self.turned:
+            self.accelerate()
+            return
+
+        if math.hypot(self.velocity[0], self.velocity[1]) < 0.01:
             self.accelerate()
             return
 
@@ -670,16 +677,27 @@ class Car:
             elif self.lookahead.collidelist(car_rects) != -1:
                 self.decelerate()
                 return
-        elif self.road.get_bound().collidelist(oppo_cars) != -1:
-            self.decelerate()
-            return
-        left_cars = self.left.cars
-        if self.lookahead.colliderect(self.left.rect):
-            if self.opposite.get_bound().collidelist(left_cars) != -1:
+            elif self.road.get_bound().collidelist(oppo_cars) != -1:
                 self.decelerate()
                 return
+            if self.lookahead.colliderect(self.left.rect):
+                car_index = self.opposite.get_bound().collidelist(left_cars)
+                if car_index != -1:
+                    if self.left.get_bound().colliderect(left_cars[car_index]):
+                        self.decelerate()
+                        return
 
         if isinstance(self.lane, LaneLeft):
+            if isinstance(self.road, RoadTop) or isinstance(self.road, RoadLeft):
+                if self.rect.colliderect(self.road.get_bound()):
+                    if self.rect.colliderect(self.left.get_bound()):
+                        car_indexes = self.opposite.get_bound().collidelistall(oppo_cars)
+                        for i in car_indexes:
+                            car = oppo_cars[i]
+                            if isinstance(oppo_cars[i].lane, LaneLeft):
+                                if abs(car.x - car.lane.car_spawn[0]) > 400 or abs(car.y - car.lane.car_spawn[1]) > 300:
+                                    self.decelerate()
+                                    return
             if self.rect.colliderect(self.right.get_bound()):
                 if not self.turned:
                     self.is_turning = True
@@ -689,9 +707,13 @@ class Car:
                     randomm = random.randint(2000, 9000)
                     self.lookahead.y = self.rect.y + randomm
                     self.turn_time = time.time()
-                    if self.right.get_bound().collidelist(oppo_cars) != -1:
-                        self.decelerate()
-                        return
+                car_index = self.right.get_bound().collidelist(oppo_cars)
+                if car_index != -1:
+                    cat = oppo_cars[car_index]
+                    if isinstance(cat.lane, LaneStraight) or isinstance(cat.lane, LaneRight):
+                        if self.opposite.get_bound().colliderect(cat):
+                            self.decelerate()
+                            return
         elif isinstance(self.lane, LaneRight):
             if self.rect.colliderect(self.left.get_bound()):
                 if not self.turned:
@@ -731,13 +753,12 @@ class Car:
 
         if self.is_turning:
             self.update_turn()
-
         radians = math.radians(self.orientation)
         # Calculate the magnitude of velocity change
         velocity_change = vel * self.speed / 3
 
-        target_velocity_x = self.speed * math.cos(radians)
-        target_velocity_y = self.speed * math.sin(radians)
+        target_velocity_x = self.speed * math.cos(radians) * game_speed
+        target_velocity_y = self.speed * math.sin(radians) * game_speed
 
         if self.state == Car.ACCELERATING:
             # Smoothly interpolate towards the target velocity
@@ -746,8 +767,8 @@ class Car:
         elif self.state == Car.DECELERATING:
             # Apply gradual deceleration
             # Decelerating faster than accelerating
-            self.velocity[0] *= max(0, 1 - 5 * dt)
-            self.velocity[1] *= max(0, 1 - 5 * dt)
+            self.velocity[0] *= max(0, 1 - 5 * dt * game_speed)
+            self.velocity[1] *= max(0, 1 - 5 * dt * game_speed)
 
         # Enforce speed limit
         speed = math.hypot(self.velocity[0], self.velocity[1])
@@ -755,6 +776,7 @@ class Car:
             scaling_factor = self.speed / speed
             self.velocity[0] *= scaling_factor
             self.velocity[1] *= scaling_factor
+
         # Update position based on new velocity
         self.x += self.velocity[0] * dt
         self.y += self.velocity[1] * dt
@@ -767,35 +789,62 @@ class Car:
     def update_turn(self):
         # Calculate the current speed of the car
         current_speed = math.hypot(self.velocity[0], self.velocity[1])
-        speed_ratio = current_speed / self.speed
 
         # Only allow the car to turn if it is moving
-        if current_speed > 0 and not self.turned and self.turn_progress < 1.0:
+        if current_speed > 0 and not self.turned:
+            game_speed = self.simulator.speed
             dt = self.simulator.dt
-            turn_rate = (self.turn_rate * speed_ratio) * dt
-
+            speed_ratio = current_speed / self.speed
+            turn_rate = self.turn_rate * speed_ratio * game_speed * dt * 60
             if isinstance(self.lane, LaneLeft):
-                self.orientation -= turn_rate * 100
-                multiplier = 100
+                potential_orientation = self.orientation - turn_rate
             elif isinstance(self.lane, LaneRight):
-                self.orientation += turn_rate * 200
-                multiplier = 200
+                potential_orientation = self.orientation + turn_rate
 
-            # Normalize the orientation to stay within 0-360 degrees
-            self.orientation %= 360
+            # Normalize the potential orientation to stay within 0-360 degrees
+            potential_orientation %= 360
+
+            # Check if the new orientation is within 90 degrees from the original orientation
+            if abs(potential_orientation - self.ori_orientation) <= 90 or \
+            abs(potential_orientation - self.ori_orientation) >= 270:
+                self.orientation = potential_orientation
+            else:
+                # Adjust the orientation to not exceed 90 degrees from the original orientation
+                if isinstance(self.lane, LaneLeft):
+                    self.orientation = (self.ori_orientation - 90) % 360
+                elif isinstance(self.lane, LaneRight):
+                    self.orientation = (self.ori_orientation + 90) % 360
+
             # Update turn progress, adjusting for the turn speed and direction multiplier
-            self.turn_progress += dt * self.turn_speed * multiplier * speed_ratio
+            self.turn_progress += dt * self.turn_speed * speed_ratio * game_speed
 
-            if self.turn_progress >= 0.9:
-                print('hi')
+            if self.turn_progress >= 1.0:
                 self.is_turning = False
                 self.turned = True
                 # Assuming speed_2 is a property defining some speed level
                 self._speed = self.speed_2 * 2
                 # Snap to the nearest 90 degrees
-                self.orientation = (round(self.orientation / 90) * 90) % 360
+                self.orientation = self.snap_orientation(self.orientation)
 
 
+    def snap_orientation(self, orientation):
+        # Define the degrees of freedom
+        degrees = [0, 90, 180, 270, 360]
+
+        # Normalize the orientation first to ensure it's within the 0-360 range
+        normalized_orientation = orientation % 360
+
+        # Find the closest multiple of 90
+        closest_degree = min(degrees, key=lambda x: abs(
+            x - normalized_orientation))
+
+        # Consider floating-point precision issues
+        for degree in degrees:
+            if abs(normalized_orientation - degree) < 10.0:  # Tolerance for floating-point precision
+                closest_degree = degree
+                break
+
+        return closest_degree
 
     def update(self) -> None:
         self.check()
