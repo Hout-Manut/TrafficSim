@@ -20,7 +20,7 @@ class Simulator:
                  window: pygame.Surface,
                  device_info,
                  is_fullscreen,
-                 user_event_1,
+                 user_event_1: int,
                  ) -> None:
         self.window = window
         self.resolution = (self.window.get_width(), self.window.get_height())
@@ -226,8 +226,26 @@ class View:
         return self.rect.height
 
     def update_cars(self) -> None:
-        self.cars = self.road_top.cars + self.road_right.cars + \
-            self.road_bottom.cars + self.road_left.cars
+        self.cars = self.road_top.cars + self.road_right.cars + self.road_bottom.cars + self.road_left.cars
+        if len(self.cars) > 30:
+            self.road_top.car_spawn_distance = 500
+            self.road_right.car_spawn_distance = 500
+            self.road_bottom.car_spawn_distance = 500
+            self.road_left.car_spawn_distance = 500
+            self.road_top.update_lane()
+            self.road_right.update_lane()
+            self.road_bottom.update_lane()
+            self.road_left.update_lane()
+        elif len(self.cars) > 50:
+            self.road_top.car_spawn_distance = 1000
+            self.road_right.car_spawn_distance = 1000
+            self.road_bottom.car_spawn_distance = 1000
+            self.road_left.car_spawn_distance = 1000
+            self.road_top.update_lane()
+            self.road_right.update_lane()
+            self.road_bottom.update_lane()
+            self.road_left.update_lane()
+
 
     def get_all_cars(self) -> list[Car]:
         return self.cars
@@ -334,6 +352,7 @@ class Road:
 
     def __init__(self, view: View) -> None:
         self.view = view
+        self.car_spawn_distance = 100
         self.lane_left = LaneLeft(self)
         self.lane_straight = LaneStraight(self)
         self.lane_right = LaneRight(self)
@@ -405,6 +424,10 @@ class Road:
     def move(self) -> None:
         for car in self.cars:
             car.move()
+
+    def update_lane(self):
+        for lane in self.lanes:
+            lane.update()
 
     @abstractmethod
     def get_light_coords(self) -> tuple[int, int]:
@@ -697,27 +720,29 @@ class Lane:
     def __init__(self, road: Road) -> None:
         self.road = road
         self.view = road.view
+        self._car_spawn = self.get_car_spawn()
 
     def get_car_spawn(self) -> tuple[int, int]:
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
+        distance = self.road.car_spawn_distance
         if isinstance(self.road, RoadTop):
             x = (view[2] // 2 - self.road.road_width * 0.8) + view[0]
-            y = -100
+            y = -distance
         elif isinstance(self.road, RoadRight):
-            x = (view[2] + 100) + view[0]
+            x = (view[2] + distance) + view[0]
             y = view[3] // 2 - self.road.road_width * 0.8
         elif isinstance(self.road, RoadBottom):
             x = (view[2] // 2 + self.road.road_width * 0.6) + view[0]
-            y = view[3] + 100
+            y = view[3] + distance
         else:
-            x = -100 + view[0]
+            x = -distance + view[0]
             y = view[3] // 2 + self.road.road_width * 0.6
         return (x, y)
 
     @property
     def car_spawn(self) -> tuple[int, int]:
-        return self.get_car_spawn()
+        return self._car_spawn
 
     @property
     def width(self) -> int:
