@@ -22,10 +22,11 @@ window = pygame.display.set_mode((WIDTH, HEIGHT), flags=flags)
 pygame.display.set_caption("Traffic Simulator")
 clock = pygame.time.Clock()
 
+
 def main(sim: Simulator):
 
-    pygame.time.set_timer(RANDOMLY_ADD_CARS, 100)
-    pygame.time.set_timer(REFRESH, 2000)
+    pygame.time.set_timer(RANDOMLY_ADD_CARS, 500)
+    pygame.time.set_timer(REFRESH, 1000)
     sim.pause()
     draw_fps(sim)
     sim.needs_refresh = True
@@ -56,8 +57,8 @@ def load_components(sim: Simulator):
     base_font = pygame.font.Font(
         os.path.join("Assets", "Roboto-Light.ttf"), 24)
     speed_text = Text(sim,
-                      anchor=UIElement.TOP_R,
-                      source=UIElement.TOP_R,
+                      anchor=UIElement.TOP_L,
+                      source=UIElement.TOP_L,
                       color=Color.BLACK,
                       font=base_font,
                       text=lambda sim: f"Speed: {sim.speed_str}",
@@ -104,6 +105,19 @@ def load_components(sim: Simulator):
                               action=lambda sim: sim.decrease_speed()
                               )
 
+    light_button = Button(sim,
+                          anchor=UIElement.BOTTOM_R,
+                          source=UIElement.BOTTOM_R,
+                          color=Color.CYAN,
+                          font=base_font,
+                          text="Change Lights",
+                          width=140,
+                          height=30,
+                          layer=UIElement.FOREGROUND,
+                          border_radius=5,
+                          action=lambda sim: sim.toggle_lights(),
+                          )
+
 
 def check_events(sim: Simulator):
     for event in pygame.event.get():
@@ -139,6 +153,9 @@ def check_events(sim: Simulator):
         elif event.type == RANDOMLY_ADD_CARS:
             if not sim.paused:
                 sim.randomly_add_cars()
+        elif event.type == REFRESH:
+            sim.view_1.update_cars()
+            sim.view_2.update_cars()
 
 
 def draw_fps(sim: Simulator):

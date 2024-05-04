@@ -834,3 +834,50 @@ class Direction:
     #         return self[self.num - 1]
     #     else:
     #         raise StopIteration
+
+
+def move(self):
+    current_time = time.time()
+    dt = self.simulator.dt
+    game_speed = self.simulator.speed
+    t = min(1, (current_time - self.time) / dt)
+    vol = ease(t) * game_speed
+
+    if self.simulator.paused:
+        return
+
+    # Scale velocity change by the time speed factor
+    vol = self.speed * vol
+    if self.state == Car.ACCELERATING:
+        velocity_change = (vol) * dt
+    else:
+        velocity_change = -(vol * 2) * dt
+
+    max_speed = self.speed if self.turn == 0 else self.speed * 0.8
+
+    road_dir = self.lane.road.direction
+    if road_dir == 0:  # Down
+        self.velocity[1] += velocity_change
+        self.velocity[1] = max(0.0, min(max_speed, self.velocity[1])
+                                ) if self.state == Car.DECELERATING else min(max_speed, self.velocity[1])
+    elif road_dir == 1:  # Left
+        self.velocity[0] -= velocity_change
+        self.velocity[0] = min(0.0, max(-max_speed, self.velocity[0])
+                                ) if self.state == Car.DECELERATING else max(-max_speed, self.velocity[0])
+    elif road_dir == 2:  # Up
+        self.velocity[1] -= velocity_change
+        self.velocity[1] = min(0.0, max(-max_speed, self.velocity[1])
+                                ) if self.state == Car.DECELERATING else max(-max_speed, self.velocity[1])
+    elif road_dir == 3:  # Right
+        self.velocity[0] += velocity_change
+        self.velocity[0] = max(0.0, min(max_speed, self.velocity[0])
+                                ) if self.state == Car.DECELERATING else min(max_speed, self.velocity[0])
+
+    self.x += self.velocity[0] * dt
+    self.y += self.velocity[1] * dt
+
+    self.rect.x = int(self.x)
+    self.rect.y = int(self.y)
+
+    self.lookahead.x = self.rect.x + self.offset[0]
+    self.lookahead.y = self.rect.y + self.offset[1]

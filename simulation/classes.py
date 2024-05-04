@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import random
 import time
@@ -9,7 +10,7 @@ from typing import Callable, Optional
 import numpy as np
 import pygame
 
-from .utills import ease
+from .utills import ease, lerp
 
 
 class Simulator:
@@ -31,6 +32,11 @@ class Simulator:
 
         self.view_1 = ViewLeft(self)
         self.view_2 = ViewRight(self)
+
+        self.view_1.toggle_top_lights()
+        self.view_1.toggle_bottom_lights()
+        self.view_2.toggle_top_lights()
+        self.view_2.toggle_bottom_lights()
 
         self.needs_refresh = True
         self.bg_elements: list[UIElement] = []
@@ -56,16 +62,11 @@ class Simulator:
         if self.paused:
             self.pause()
         self.time_speed = min(5.0, self.time_speed + 0.1)
-        self.update_events()
 
     def decrease_speed(self) -> None:
         if self.paused:
             self.pause()
         self.time_speed = max(0.0, self.time_speed - 0.1)
-        self.update_events()
-
-    def update_events(self) -> None:
-        pygame.time.set_timer(self.randomly_add_cars_event, int(1000 / self.time_speed))
 
     @property
     def dt(self) -> float:
@@ -91,6 +92,10 @@ class Simulator:
             button.handle_event(event)
 
     def toggle_lights(self) -> None:
+        self.view_1.toggle_lights()
+        self.view_2.toggle_lights()
+
+    def toggle_light(self, index: int) -> None:
         ...
 
     def pause(self) -> None:
@@ -155,6 +160,8 @@ class View:
         self.road_bottom = RoadBottom(self)
         self.road_left = RoadLeft(self)
 
+        self.cars = []
+
     @property
     def width(self) -> int:
         return self.rect.width
@@ -162,6 +169,12 @@ class View:
     @property
     def height(self) -> int:
         return self.rect.height
+
+    def update_cars(self) -> None:
+        self.cars = self.road_top.cars + self.road_right.cars + self.road_bottom.cars + self.road_left.cars
+
+    def get_all_cars(self) -> list[Car]:
+        return self.cars
 
     def update(self) -> None:
         self.road_top.update()
@@ -182,6 +195,24 @@ class View:
         self.road_bottom.draw_debug()
         self.road_left.draw_debug()
         self.sim.window.set_clip(None)
+
+    def toggle_lights(self) -> None:
+        self.road_top.toggle_lights()
+        self.road_right.toggle_lights()
+        self.road_bottom.toggle_lights()
+        self.road_left.toggle_lights()
+
+    def toggle_top_lights(self) -> None:
+        self.road_top.toggle_lights()
+
+    def toggle_right_lights(self) -> None:
+        self.road_right.toggle_lights()
+
+    def toggle_bottom_lights(self) -> None:
+        self.road_bottom.toggle_lights()
+
+    def toggle_left_lights(self) -> None:
+        self.road_left.toggle_lights()
 
     def draw(self) -> None:
         # if not self._sim.needs_refresh:
@@ -246,6 +277,7 @@ class Road:
     @property
     def is_active(self) -> bool:
         return True if self.light.state == State.Light.GREEN else False
+
     @property
     def state(self) -> bool:
         return self.light.state
@@ -262,8 +294,12 @@ class Road:
     def window(self) -> pygame.Surface:
         return self.view.sim.window
 
+    def toggle_lights(self) -> None:
+        self.light.toggle()
+
     def add_car(self, direction: int) -> None:
-        self.cars.append(Car(self.lanes[direction]))
+        new_car = Car(self.lanes[direction])
+        self.cars.append(new_car)
 
     def update(self) -> None:
         if self.view.sim.needs_refresh:
@@ -455,7 +491,6 @@ class Lane:
     def get_car_spawn(self) -> tuple[int, int]:
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
-        print(view)
         if isinstance(self.road, RoadTop):
             x = (view[2] // 2 - self.road.road_width * 0.8) + view[0]
             y = -100
@@ -522,11 +557,13 @@ class LaneRight(Lane):
 
 class Car:
 
-    BASE_SPEED = 150.0
+    BASE_SPEED = 200.0
     BASE_ACCEL = 100.0
 
     ACCELERATING = 1
     DECELERATING = 2
+    TURN_LEFT = 3
+    TURN_RIGHT = 4
 
     def __init__(self,
                  lane: Lane,
@@ -534,9 +571,8 @@ class Car:
                  speed: Optional[float] = None,
                  accel: Optional[float] = None
                  ) -> None:
-        print(f"[Car.__init__] Creating car in lane {lane.road.direction}")
         self.lane = lane
-
+        self.road = lane.road
         self.size = (30, 30)
         self.old_view_rect = lane.view.rect.width, lane.view.rect.height
         r_modifier = random.random()
@@ -551,7 +587,6 @@ class Car:
         self.x = x
         self.y = y
 
-        self.light_bound = self.lane.road.get_light_bound()
         self.state = Car.ACCELERATING
         self.time = time.time()
 
@@ -559,9 +594,16 @@ class Car:
         road_dir = lane.road.direction
         ran = random.randint(0, 3)
         ran += 1
+        self.is_turning = False
+        self.turn_progress = 0.0
+        self.turn_speed = 1
+        self.speed_2 = self.speed / 2
+        self.turned = False
+        self.turn_time = 0.0
+        self.turn_rate = 90
         if road_dir == 0:
 
-            self.orientaion = 180  # Road from the top, car faces down
+            self.orientation = 90  # Road from the top, car faces down
             self.left = lane.road.view.road_right
             self.right = lane.road.view.road_left
             self.opposite = lane.road.view.road_bottom
@@ -570,25 +612,25 @@ class Car:
                 x, y + self.offset[1], self.size[0], self.size[1] * 2)
         elif road_dir == 1:
 
-            self.orientaion = 270  # Road from the right, car faces left
-            self.left = lane.road.view.road_top
-            self.right = lane.road.view.road_bottom
+            self.orientation = 180  # Road from the right, car faces left
+            self.left = lane.road.view.road_bottom
+            self.right = lane.road.view.road_top
             self.opposite = lane.road.view.road_left
             self.offset = -(self.size[0] * 2 + ran), 0
             self.lookahead = pygame.Rect(
                 x + self.offset[0], y, self.size[0] * 2, self.size[1])
         elif road_dir == 2:
 
-            self.orientaion = 0  # Road from the bottom, car faces up
-            self.left = lane.road.view.road_right
-            self.right = lane.road.view.road_left
+            self.orientation = 270  # Road from the bottom, car faces up
+            self.left = lane.road.view.road_left
+            self.right = lane.road.view.road_right
             self.opposite = lane.road.view.road_top
             self.offset = 0, -(self.size[0] * 2 + ran)
             self.lookahead = pygame.Rect(
                 x, y + self.offset[1], self.size[0], self.size[1] * 2)
         else:
 
-            self.orientaion = 90  # Road from the left, car faces right
+            self.orientation = 0  # Road from the left, car faces right
             self.left = lane.road.view.road_top
             self.right = lane.road.view.road_bottom
             self.opposite = lane.road.view.road_right
@@ -599,10 +641,6 @@ class Car:
     @property
     def speed(self) -> float:
         return self._speed * self.simulator.speed
-
-    @property
-    def road(self) -> Road:
-        return self.lane.road
 
     @property
     def view(self) -> View:
@@ -617,17 +655,53 @@ class Car:
         return self.lane.direction
 
     def check(self) -> None:
-        car_rects = [car.rect for car in self.road.cars if car is not self]
+        cars = self.road.view.get_all_cars()
+        car_rects = [car.rect for car in cars if car is not self]
+        oppo_cars = self.opposite.cars
+
+        if self.turned:
+            self.accelerate()
+            return
+
         if self.lookahead.colliderect(self.road.get_light_bound()):
             if not self.road.is_active:
                 self.decelerate()
                 return
-            elif self.opposite.get_bound().collidelist(car_rects) != -1:
+            elif self.lookahead.collidelist(car_rects) != -1:
                 self.decelerate()
                 return
-            else:
-                self.accelerate()
+        elif self.road.get_bound().collidelist(oppo_cars) != -1:
+            self.decelerate()
             return
+        left_cars = self.left.cars
+        if self.lookahead.colliderect(self.left.rect):
+            if self.opposite.get_bound().collidelist(left_cars) != -1:
+                self.decelerate()
+                return
+
+        if isinstance(self.lane, LaneLeft):
+            if self.rect.colliderect(self.right.get_bound()):
+                if not self.turned:
+                    self.is_turning = True
+                    self._speed = self.speed_2
+                    self.lookahead.width = 1
+                    self.lookahead.height = 1
+                    randomm = random.randint(2000, 9000)
+                    self.lookahead.y = self.rect.y + randomm
+                    self.turn_time = time.time()
+                    if self.right.get_bound().collidelist(oppo_cars) != -1:
+                        self.decelerate()
+                        return
+        elif isinstance(self.lane, LaneRight):
+            if self.rect.colliderect(self.left.get_bound()):
+                if not self.turned:
+                    self.is_turning = True
+                    self.lookahead.width = 1
+                    self.lookahead.height = 1
+                    randomm = random.randint(2000, 9000)
+                    self.lookahead.x = self.rect.x + randomm
+                    self._speed = self.speed_2
+                    self.turn_time = time.time()
         if self.lookahead.collidelist(car_rects) != -1:
             self.decelerate()
             return
@@ -646,52 +720,89 @@ class Car:
             self.time = time.time()
 
     def move(self):
+        if self.simulator.paused:
+            return
+
         current_time = time.time()
         dt = self.simulator.dt
         game_speed = self.simulator.speed
         t = min(1, (current_time - self.time) / dt)
-        vol = ease(t) * game_speed
+        vel = ease(t) * game_speed
 
-        if self.simulator.paused:
-            return
+        if self.is_turning:
+            self.update_turn()
 
-        # Scale velocity change by the time speed factor
-        vol = self.speed * vol
+        radians = math.radians(self.orientation)
+        # Calculate the magnitude of velocity change
+        velocity_change = vel * self.speed / 3
+
+        target_velocity_x = self.speed * math.cos(radians)
+        target_velocity_y = self.speed * math.sin(radians)
+
         if self.state == Car.ACCELERATING:
-            velocity_change = (vol / 2) * dt
-        else:
-            velocity_change = -(vol * 2) * dt
+            # Smoothly interpolate towards the target velocity
+            self.velocity[0] = lerp(self.velocity[0], target_velocity_x, dt)
+            self.velocity[1] = lerp(self.velocity[1], target_velocity_y, dt)
+        elif self.state == Car.DECELERATING:
+            # Apply gradual deceleration
+            # Decelerating faster than accelerating
+            self.velocity[0] *= max(0, 1 - 5 * dt)
+            self.velocity[1] *= max(0, 1 - 5 * dt)
 
-        road_dir = self.lane.road.direction
-        if road_dir == 0:  # Down
-            self.velocity[1] += velocity_change
-            self.velocity[1] = max(0.0, min(self.speed, self.velocity[1])
-                                   ) if self.state == Car.DECELERATING else min(self.speed, self.velocity[1])
-        elif road_dir == 1:  # Left
-            self.velocity[0] -= velocity_change
-            self.velocity[0] = min(0.0, max(-self.speed, self.velocity[0])
-                                   ) if self.state == Car.DECELERATING else max(-self.speed, self.velocity[0])
-        elif road_dir == 2:  # Up
-            self.velocity[1] -= velocity_change
-            self.velocity[1] = min(0.0, max(-self.speed, self.velocity[1])
-                                   ) if self.state == Car.DECELERATING else max(-self.speed, self.velocity[1])
-        elif road_dir == 3:  # Right
-            self.velocity[0] += velocity_change
-            self.velocity[0] = max(0.0, min(self.speed, self.velocity[0])
-                                   ) if self.state == Car.DECELERATING else min(self.speed, self.velocity[0])
-
+        # Enforce speed limit
+        speed = math.hypot(self.velocity[0], self.velocity[1])
+        if speed > self.speed:
+            scaling_factor = self.speed / speed
+            self.velocity[0] *= scaling_factor
+            self.velocity[1] *= scaling_factor
+        # Update position based on new velocity
         self.x += self.velocity[0] * dt
         self.y += self.velocity[1] * dt
 
         self.rect.x = int(self.x)
         self.rect.y = int(self.y)
-
         self.lookahead.x = self.rect.x + self.offset[0]
         self.lookahead.y = self.rect.y + self.offset[1]
+
+    def update_turn(self):
+        # Calculate the current speed of the car
+        current_speed = math.hypot(self.velocity[0], self.velocity[1])
+        speed_ratio = current_speed / self.speed
+
+        # Only allow the car to turn if it is moving
+        if current_speed > 0 and not self.turned and self.turn_progress < 1.0:
+            dt = self.simulator.dt
+            turn_rate = (self.turn_rate * speed_ratio) * dt
+
+            if isinstance(self.lane, LaneLeft):
+                self.orientation -= turn_rate * 100
+                multiplier = 100
+            elif isinstance(self.lane, LaneRight):
+                self.orientation += turn_rate * 200
+                multiplier = 200
+
+            # Normalize the orientation to stay within 0-360 degrees
+            self.orientation %= 360
+            # Update turn progress, adjusting for the turn speed and direction multiplier
+            self.turn_progress += dt * self.turn_speed * multiplier * speed_ratio
+
+            if self.turn_progress >= 0.9:
+                print('hi')
+                self.is_turning = False
+                self.turned = True
+                # Assuming speed_2 is a property defining some speed level
+                self._speed = self.speed_2 * 2
+                # Snap to the nearest 90 degrees
+                self.orientation = (round(self.orientation / 90) * 90) % 360
+
+
 
     def update(self) -> None:
         self.check()
         self.rect = self.update_position()
+        if abs(self.x - self.lane.car_spawn[0]) > 2000 or abs(self.y - self.lane.car_spawn[1]) > 2000:
+            self.lane.road.cars.remove(self)
+            del self
 
     def update_position(self) -> pygame.Rect:
         new_size = self.road.view.rect.size
@@ -720,7 +831,7 @@ class Car:
 
     def draw(self) -> None:
         pygame.draw.rect(self.road.window, Color.GREEN, self.rect)
-        pygame.draw.rect(self.road.window, Color.GRAY, self.lookahead, 2)
+        # pygame.draw.rect(self.road.window, Color.GRAY, self.lookahead, 2)
 
 
 class TrafficLight:
@@ -728,6 +839,14 @@ class TrafficLight:
     def __init__(self, road: Road) -> None:
         self.road = road
         self.state = State.Light.RED
+
+    def toggle(self) -> None:
+        if self.state == State.Light.RED:
+            self.state = State.Light.GREEN
+        # elif self.state == State.Light.YELLOW:
+        #     self.state = State.Light.GREEN
+        elif self.state == State.Light.GREEN:
+            self.state = State.Light.RED
 
     @property
     def coords(self) -> tuple[int, int]:

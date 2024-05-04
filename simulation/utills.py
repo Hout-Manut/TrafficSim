@@ -7,6 +7,11 @@ def get_mid_coord(x1, y1, x2, y2):
     return tuple((a + b) / 2)
 
 
+def lerp(start, end, t):
+    """Linearly interpolate between start and end by t."""
+    return start + (end - start) * t
+
+
 def ease_in_out_sine(t):
     return -(np.cos(np.pi * np.array(t)) - 1) / 2
 
