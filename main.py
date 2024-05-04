@@ -30,8 +30,11 @@ def main(sim: Simulator):
     sim.pause()
     draw_fps(sim)
     sim.needs_refresh = True
-    load_components(sim)
 
+    sim.load_smart_light()
+    sim.load_basic_light(value=50)
+
+    load_components(sim)
     while sim.running:
         dt = clock.tick(FPS) / 1000
         sim.dt = dt
@@ -40,10 +43,10 @@ def main(sim: Simulator):
         # if time.time() - time_updated >= 0.5:
         window.fill(Color.WHITE)
 
-        sim.draw()
-        sim.draw_debug()
         sim.update()
         sim.move()
+        sim.draw()
+        # sim.draw_debug()
 
         draw_fps(sim)
 
@@ -54,6 +57,7 @@ def main(sim: Simulator):
 
 
 def load_components(sim: Simulator):
+    # custom speed broke
     base_font = pygame.font.Font(
         os.path.join("Assets", "Roboto-Light.ttf"), 24)
     speed_text = Text(sim,
@@ -68,55 +72,96 @@ def load_components(sim: Simulator):
     speed_text.load()
     base_font = pygame.font.Font(
         os.path.join("Assets", "Roboto-Light.ttf"), 20)
-    speed_inc_button = Button(sim,
-                              anchor=UIElement.TOP_L,
-                              offset=(0, 50),
-                              color=Color.CYAN,
-                              font=base_font,
-                              text="+ Speed",
-                              width=100,
-                              height=30,
-                              layer=UIElement.FOREGROUND,
-                              border_radius=5,
-                              action=lambda sim: sim.increase_speed()
-                              )
+    # speed_inc_button = Button(sim,
+    #                           anchor=UIElement.TOP_L,
+    #                           offset=(0, 50),
+    #                           color=Color.CYAN,
+    #                           font=base_font,
+    #                           text="+ Speed",
+    #                           width=100,
+    #                           height=30,
+    #                           layer=UIElement.FOREGROUND,
+    #                           border_radius=5,
+    #                           action=lambda sim: sim.increase_speed()
+    #                           )
     pause_button = Button(sim,
                           anchor=UIElement.TOP_L,
-                          offset=(110, 50),
-                          color=Color.CYAN,
+                          offset=(0, 40),
+                          color=Color.WHITE,
                           font=base_font,
-                          text="Pause",
+                          text=lambda sim: "Unpause" if sim.paused else "Pause",
                           width=100,
                           height=30,
                           layer=UIElement.FOREGROUND,
                           border_radius=5,
                           action=lambda sim: sim.pause()
                           )
-    speed_dec_button = Button(sim,
-                              anchor=UIElement.TOP_L,
-                              offset=(220, 50),
-                              color=Color.CYAN,
-                              font=base_font,
-                              text="- Speed",
-                              width=100,
-                              height=30,
-                              layer=UIElement.FOREGROUND,
-                              border_radius=5,
-                              action=lambda sim: sim.decrease_speed()
-                              )
+    # speed_dec_button = Button(sim,
+    #                           anchor=UIElement.TOP_L,
+    #                           offset=(220, 50),
+    #                           color=Color.CYAN,
+    #                           font=base_font,
+    #                           text="- Speed",
+    #                           width=100,
+    #                           height=30,
+    #                           layer=UIElement.FOREGROUND,
+    #                           border_radius=5,
+    #                           action=lambda sim: sim.decrease_speed()
+    #                           )
 
     light_button = Button(sim,
                           anchor=UIElement.BOTTOM_R,
                           source=UIElement.BOTTOM_R,
-                          color=Color.CYAN,
+                          view=sim.view_1,
+                          offset=(-40, 0),
+                          color=Color.WHITE,
                           font=base_font,
                           text="Change Lights",
                           width=140,
                           height=30,
                           layer=UIElement.FOREGROUND,
                           border_radius=5,
-                          action=lambda sim: sim.toggle_lights(),
+                          action=lambda sim: sim.toggle_light(1),
                           )
+    light_button = Button(sim,
+                          anchor=UIElement.BOTTOM_L,
+                          source=UIElement.BOTTOM_L,
+                          view=sim.view_2,
+                          offset=(40, 0),
+                          color=Color.WHITE,
+                          font=base_font,
+                          text="Change Lights",
+                          width=140,
+                          height=30,
+                          layer=UIElement.FOREGROUND,
+                          border_radius=5,
+                          action=lambda sim: sim.toggle_light(2),
+                          )
+    big_font = pygame.font.Font(
+        os.path.join("Assets", "DSEG7.ttf"), 40
+    )
+    view_1_countdown = Text(sim,
+                            view=sim.view_1,
+                            anchor=UIElement.CENTER,
+                            source=UIElement.CENTER,
+                            color=Color.WHITE,
+                            background_color=(56, 54, 56),
+                            font=big_font,
+                            text=lambda sim: sim.light_1.get_current_value(),
+                            layer=UIElement.BACKGROUND,
+                            dynamic=True
+    )
+    view_2_countdown = Text(sim,
+                            view=sim.view_2,
+                            anchor=UIElement.CENTER,
+                            source=UIElement.CENTER,
+                            color=Color.WHITE,
+                            background_color=(56, 54, 56),
+                            font=big_font,
+                            text=lambda sim: sim.light_2.get_current_value(),
+                            layer=UIElement.BACKGROUND,
+                            dynamic=True
+    )
 
 
 def check_events(sim: Simulator):
@@ -164,6 +209,7 @@ def draw_fps(sim: Simulator):
     fps_text = font.render(fps_counter, True, Color.BLACK)
     fps_rect = fps_text.get_rect()
     fps_rect.bottomleft = (9, HEIGHT - 30)
+    fps_rect.y += 30
     window.fill(Color.WHITE, fps_rect)
     window.blit(fps_text, (9, sim.height - 30))
 

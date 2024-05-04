@@ -1,6 +1,5 @@
 .env
 .venv
-Assets/cars/*
 *__pycache__/
 test.py
 *.kra

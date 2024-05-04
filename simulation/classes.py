@@ -11,6 +11,7 @@ import numpy as np
 import pygame
 
 from .utills import ease, lerp
+from . import trafficlight
 
 
 class Simulator:
@@ -38,6 +39,9 @@ class Simulator:
         self.view_2.toggle_top_lights()
         self.view_2.toggle_bottom_lights()
 
+        self.light_1 = None
+        self.light_2 = None
+
         self.needs_refresh = True
         self.bg_elements: list[UIElement] = []
         self.mg_elements: list[UIElement] = []
@@ -58,6 +62,20 @@ class Simulator:
     def speed(self, value: float) -> None:
         self.time_speed = value
 
+    def load_smart_light(self,
+                         max_value: float = 120,
+                         base_offset: int = 30,
+                         increment_value: float = 1.0,
+                         no_traffic_multiplier: float = 5.0,
+                         value_per_car: float = 1.0
+                         ) -> None:
+        self.light_1 = trafficlight.Smart(self, max_value, base_offset, increment_value, no_traffic_multiplier, value_per_car)
+
+    def load_basic_light(self,
+                         value = 120.0
+                         ) -> None:
+        self.light_2 = trafficlight.Basic(self, value)
+
     def increase_speed(self) -> None:
         if self.paused:
             self.pause()
@@ -67,6 +85,22 @@ class Simulator:
         if self.paused:
             self.pause()
         self.time_speed = max(0.0, self.time_speed - 0.1)
+
+    def get_active_road_cars(self, view_index = 1) -> int:
+        if view_index == 1:
+            return self.view_1.get_all_active_road_cars()
+        elif view_index == 2:
+            return self.view_2.get_all_active_road_cars()
+
+    def get_inactive_road_cars(self, view_index = 1) -> int:
+        if view_index == 1:
+            return self.view_1.get_all_inactive_road_cars()
+        elif view_index == 2:
+            return self.view_2.get_all_inactive_road_cars()
+
+    @property
+    def rect(self) -> pygame.Rect:
+        return self.window.get_rect()
 
     @property
     def dt(self) -> float:
@@ -91,39 +125,55 @@ class Simulator:
         for button in self.buttons:
             button.handle_event(event)
 
-    def toggle_lights(self) -> None:
+    def toggle_lights(self, view_index = 1) -> None:
+        if view_index == 1:
+            self.view_1.toggle_lights()
+            return
+        elif view_index == 2:
+            self.view_2.toggle_lights()
+            return
         self.view_1.toggle_lights()
         self.view_2.toggle_lights()
 
     def toggle_light(self, index: int) -> None:
-        ...
+        if index == 1:
+            self.light_1.toggle_light()
+            return
+        elif index == 2:
+            self.light_2.toggle_light()
+            return
+        self.light_1.toggle_light()
+        self.light_2.toggle_light()
 
     def pause(self) -> None:
         self.paused = not self.paused
 
     def randomly_add_cars(self, chance: Optional[int] = 50, road_index: Optional[int] = None) -> None:
         ran = random.randint(0, 100)
+        color = random.randint(1, 9)
         if road_index:
             if ran <= chance:
                 direction = random.randint(0, 2)
-                self.view_1[road_index].add_car(direction)
-                self.view_2[road_index].add_car(direction)
+                self.view_1[road_index].add_car(direction, color)
+                self.view_2[road_index].add_car(direction, color)
         else:
             road_index = random.randint(0, 3)
             if ran <= chance:
                 direction = random.randint(0, 2)
-                self.view_1[road_index].add_car(direction)
-                self.view_2[road_index].add_car(direction)
+                self.view_1[road_index].add_car(direction, color)
+                self.view_2[road_index].add_car(direction, color)
 
     def draw_debug(self) -> None:
         self.view_1.draw_debug()
         self.view_2.draw_debug()
 
     def draw(self) -> None:
-        for element in self.bg_elements:
-            element.draw()
         self.view_1.draw()
         self.view_2.draw()
+        for element in self.bg_elements:
+            element.draw()
+        self.view_1.draw_cars()
+        self.view_2.draw_cars()
         for element in self.mg_elements:
             element.draw()
         for element in self.fg_elements:
@@ -131,10 +181,14 @@ class Simulator:
         for button in self.buttons:
             button.draw()
 
+        self.needs_refresh = False
+
     def update(self) -> None:
         # if self.needs_refresh:
         self.view_1.update()
+        self.light_1.update()
         self.view_2.update()
+        self.light_2.update()
 
     def move(self) -> None:
         self.view_1.move()
@@ -147,6 +201,7 @@ class Simulator:
             self.mg_elements.append(element)
         elif element.z == 2:
             self.fg_elements.append(element)
+
 
 class View:
 
@@ -171,7 +226,8 @@ class View:
         return self.rect.height
 
     def update_cars(self) -> None:
-        self.cars = self.road_top.cars + self.road_right.cars + self.road_bottom.cars + self.road_left.cars
+        self.cars = self.road_top.cars + self.road_right.cars + \
+            self.road_bottom.cars + self.road_left.cars
 
     def get_all_cars(self) -> list[Car]:
         return self.cars
@@ -196,6 +252,22 @@ class View:
         self.road_left.draw_debug()
         self.sim.window.set_clip(None)
 
+    def draw_cars(self) -> None:
+        self.sim.window.set_clip(self.rect)
+        self.road_top.draw_cars()
+        self.road_right.draw_cars()
+        self.road_bottom.draw_cars()
+        self.road_left.draw_cars()
+        self.sim.window.set_clip(None)
+
+    def draw(self) -> None:
+        self.sim.window.set_clip(self.rect)
+        self.road_top.draw()
+        self.road_right.draw()
+        self.road_bottom.draw()
+        self.road_left.draw()
+        self.sim.window.set_clip(None)
+
     def toggle_lights(self) -> None:
         self.road_top.toggle_lights()
         self.road_right.toggle_lights()
@@ -214,17 +286,14 @@ class View:
     def toggle_left_lights(self) -> None:
         self.road_left.toggle_lights()
 
-    def draw(self) -> None:
-        # if not self._sim.needs_refresh:
-        #     return
-        # return
-        self.sim.window.set_clip(self.rect)
-        # self.road_top.draw()
-        # self.road_right.draw()
-        # self.road_bottom.draw()
-        # self.road_left.draw()
-        self.sim.window.set_clip(None)
-        ...
+    def get_all_active_road_cars(self) -> int:
+        return sum([road.get_active_cars() for road in self])
+
+    def get_all_inactive_road_cars(self) -> int:
+        return sum([road.get_inactive_cars() for road in self])
+
+    def __len__(self) -> int:
+        return 4
 
     def __getitem__(self, index):
         if index == 0:
@@ -265,7 +334,6 @@ class Road:
 
     def __init__(self, view: View) -> None:
         self.view = view
-        self.light = TrafficLight(self)
         self.lane_left = LaneLeft(self)
         self.lane_straight = LaneStraight(self)
         self.lane_right = LaneRight(self)
@@ -273,10 +341,34 @@ class Road:
         self.rect = self.get_bound()
         self.light_rect = self.get_light_bound()
         self.cars: list[Car] = []
+        self.light = TrafficLight(self)
+        self.load_sprite()
+        self.update_graphic()
+
+    def load_sprite(self) -> None:
+        self.center = pygame.image.load(
+            os.path.join("Assets", "intersect.png")
+        )
+        self.zebras = [pygame.transform.rotate(pygame.image.load(os.path.join("Assets", "zebra.png")), 90 * i) for i in range(4)]
+        self.sprite = pygame.image.load(
+            os.path.join("Assets", "road.png")
+        )
 
     @property
     def is_active(self) -> bool:
         return True if self.light.state == State.Light.GREEN else False
+
+    def get_active_cars(self) -> int:
+        if self.is_active:
+            cars = self.get_half_bound().collidelistall([car.rect for car in self.cars])
+            return len(cars)
+        return 0
+
+    def get_inactive_cars(self) -> int:
+        if not self.is_active:
+            cars = self.get_half_bound().collidelistall([car.rect for car in self.cars])
+            return len(cars)
+        return 0
 
     @property
     def state(self) -> bool:
@@ -297,14 +389,16 @@ class Road:
     def toggle_lights(self) -> None:
         self.light.toggle()
 
-    def add_car(self, direction: int) -> None:
-        new_car = Car(self.lanes[direction])
+    def add_car(self, direction: int, color: int) -> None:
+        new_car = Car(self.lanes[direction], color=color)
         self.cars.append(new_car)
 
     def update(self) -> None:
         if self.view.sim.needs_refresh:
             self.rect = self.get_bound()
             self.light_rect = self.get_light_bound()
+            self.update_graphic()
+
         for car in self.cars:
             car.update()
 
@@ -321,6 +415,10 @@ class Road:
         ...
 
     @abstractmethod
+    def get_half_bound(self) -> pygame.Rect:
+        ...
+
+    @abstractmethod
     def get_bound(self) -> pygame.Rect:
         ...
 
@@ -328,15 +426,81 @@ class Road:
     def get_light_bound(self) -> pygame.Rect:
         ...
 
-    def draw_debug(self) -> None:
-        if self.view.sim.needs_refresh:
-            self.rect = self.get_bound()
-            self.light_rect = self.get_light_bound()
+    def draw_cars(self) -> None:
+        for car in self.cars:
+            car.draw()
 
-        pygame.draw.rect(self.window, self.color, self.rect, 2)
+    def draw_debug(self) -> None:
+        pygame.draw.rect(self.window, self.color, self.get_half_bound(), 2)
         pygame.draw.rect(self.window, self.color, self.light_rect, 5)
         for car in self.cars:
             car.draw()
+
+    def update_graphic(self):
+        self.center = pygame.transform.scale(
+            self.center, (self.road_width * 2, self.road_width * 2)
+        )
+        new_zebra = [pygame.transform.scale(
+            zebra, (self.road_width * 2, self.road_width * 2)) for zebra in self.zebras]
+        self.zebras = new_zebra
+        self.sprite = pygame.transform.scale(
+            self.sprite, (self.road_width * 2, self.road_width * 2)
+        )
+        sprite_1 = self.sprite
+        sprite_2 = pygame.transform.rotate(self.sprite, 90)
+        self.blit_list = []
+
+        x = self.view.rect.width // 2 - self.road_width
+        x += self.view.rect.x
+        y = self.view.rect.height // 2 - self.road_width
+
+        self.blit_list.append((self.center, (x, y)))
+
+        x = self.view.rect.width // 2 - (self.road_width * 3)  # Left
+        x += self.view.rect.x
+        y = self.view.rect.height // 2 - self.road_width
+
+        self.blit_list.append((self.zebras[0], (x, y)))
+
+        x = self.view.rect.width // 2 + self.road_width  # Right
+        x += self.view.rect.x
+
+        self.blit_list.append((self.zebras[2], (x, y)))
+
+        x = self.view.rect.width // 2 - self.road_width
+        x += self.view.rect.x
+        y = self.view.rect.height // 2 - (self.road_width * 3)  # Top
+
+        self.blit_list.append((self.zebras[3], (x, y)))
+
+        y = self.view.rect.height // 2 + self.road_width  # Bottom
+
+        self.blit_list.append((self.zebras[1], (x, y)))
+
+        times = self.view.rect.height // 2 - (self.road_width * 3)
+        length = self.sprite.get_height()
+        times = times // length + 1
+        y = self.view.rect.height // 2 - (self.road_width * 5)
+        y2 = self.view.rect.height // 2 + (self.road_width * 3)
+        for i in range(times):
+            to_blit = sprite_2, (x, y - i * length)
+            self.blit_list.append(to_blit)
+            to_blit = sprite_2, (x, y2 + i * length)
+            self.blit_list.append(to_blit)
+
+        x = self.view.rect.width // 2 - (self.road_width * 5)
+        x += self.view.rect.x
+        x2 = self.view.rect.width // 2 + (self.road_width * 3)
+        x2 += self.view.rect.x
+        y = self.view.rect.height // 2 - self.road_width
+        for i in range(times):
+            to_blit = sprite_1, (x - i * length, y)
+            self.blit_list.append(to_blit)
+            to_blit = sprite_1, (x2 + i * length, y)
+            self.blit_list.append(to_blit)
+
+    def draw(self) -> None:
+        self.light.draw()
 
 
 class RoadTop(Road):
@@ -349,11 +513,20 @@ class RoadTop(Road):
     def direction(self) -> int:
         return 0
 
+    def get_half_bound(self) -> pygame.Rect:
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
+        x = view[2] // 2 - self.road_width + view[0]
+        y = 0
+        w = self.road_width
+        h = view[3] // 2 - self.road_width
+        return pygame.Rect(x, y, w, h)
+
     def get_bound(self) -> pygame.Rect:
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
         x = view[2] // 2 - self.road_width + view[0]
-        y = 0  # + view[1]
+        y = 0
         w = self.road_width
         h = view[3]
         return pygame.Rect(x, y, w, h)
@@ -362,7 +535,7 @@ class RoadTop(Road):
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
         x = view[2] // 2 - self.road_width + view[0]
-        y = view[3] // 2 - self.road_width
+        y = view[3] // 2 - self.road_width * 1.7
         w = self.road_width
         h = 5
         return pygame.Rect(x, y, w, h)
@@ -370,9 +543,17 @@ class RoadTop(Road):
     def get_light_coords(self) -> tuple[int, int]:
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
-        x = view[2] // 2 - self.road_width * 2
-        y = view[3] // 2 - self.road_width * 2
+        x = view[2] // 2 - self.road_width - 40
+        y = view[3] // 2 - self.road_width - 80
+        x += view[0]
         return x, y
+
+    def draw(self) -> None:
+        if self.view.sim.needs_refresh:
+            self.update_graphic()
+
+        self.window.blits(self.blit_list)
+        self.light.draw()
 
 
 class RoadRight(Road):
@@ -380,6 +561,15 @@ class RoadRight(Road):
     @property
     def color(self) -> tuple[int, int, int]:
         return Color.RED
+
+    def get_half_bound(self) -> pygame.Rect:
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
+        x = view[2] // 2 + self.road_width + view[0]
+        y = view[3] // 2 - self.road_width
+        w = view[2] // 2 - self.road_width
+        h = self.road_width
+        return pygame.Rect(x, y, w, h)
 
     def get_bound(self) -> pygame.Rect:
         view = [self.view.rect.x, self.view.rect.y,
@@ -393,7 +583,7 @@ class RoadRight(Road):
     def get_light_bound(self) -> pygame.Rect:
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
-        x = view[2] // 2 + self.road_width + view[0]
+        x = view[2] // 2 + (self.road_width * 1.7) + view[0]
         y = view[3] // 2 - self.road_width
         w = 5
         h = self.road_width
@@ -402,8 +592,9 @@ class RoadRight(Road):
     def get_light_coords(self) -> tuple[int, int]:
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
-        x = view[2] // 2 + self.road_width * 2
-        y = view[3] // 2 - self.road_width * 2
+        x = view[2] // 2 + self.road_width + 40
+        y = view[3] // 2 - self.road_width - 80
+        x += view[0]
         return x, y
 
     @property
@@ -415,6 +606,15 @@ class RoadBottom(Road):
     @property
     def color(self) -> tuple[int, int, int]:
         return Color.BLUE
+
+    def get_half_bound(self) -> pygame.Rect:
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
+        x = view[2] // 2 + view[0]
+        y = view[3] // 2 + self.road_width
+        w = self.road_width
+        h = view[3] // 2 - self.road_width
+        return pygame.Rect(x, y, w, h)
 
     def get_bound(self) -> pygame.Rect:
         view = [self.view.rect.x, self.view.rect.y,
@@ -429,7 +629,7 @@ class RoadBottom(Road):
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
         x = (view[2] // 2) + view[0]
-        y = view[3] // 2 + self.road_width
+        y = view[3] // 2 + self.road_width * 1.7
         w = self.road_width
         h = 5
         return pygame.Rect(x, y, w, h)
@@ -437,20 +637,29 @@ class RoadBottom(Road):
     def get_light_coords(self) -> tuple[int, int]:
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
-        x = view[2] // 2 + self.road_width * 2
-        y = view[3] // 2 + self.road_width * 2
+        x = view[2] // 2 + self.road_width + 40
+        y = view[3] // 2 + self.road_width + 40
+        x += view[0]
         return x, y
 
     @property
     def direction(self) -> int:
         return 2
 
-
 class RoadLeft(Road):
 
     @property
     def color(self) -> tuple[int, int, int]:
         return Color.BLACK
+
+    def get_half_bound(self) -> pygame.Rect:
+        view = [self.view.rect.x, self.view.rect.y,
+                self.view.rect.width, self.view.rect.height]
+        x = 0 + view[0]
+        y = view[3] // 2
+        w = view[2] // 2 - self.road_width
+        h = self.road_width
+        return pygame.Rect(x, y, w, h)
 
     def get_bound(self) -> pygame.Rect:
         view = [self.view.rect.x, self.view.rect.y,
@@ -464,7 +673,7 @@ class RoadLeft(Road):
     def get_light_bound(self) -> pygame.Rect:
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
-        x = view[2] // 2 - self.road_width + view[0]
+        x = view[2] // 2 - (self.road_width * 1.7) + view[0]
         y = view[3] // 2
         w = 5
         h = self.road_width
@@ -473,8 +682,9 @@ class RoadLeft(Road):
     def get_light_coords(self) -> tuple[int, int]:
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
-        x = view[2] // 2 - self.road_width * 2
-        y = view[3] // 2 + self.road_width * 2
+        x = view[2] // 2 - self.road_width - 40
+        y = view[3] // 2 + self.road_width + 40
+        x += view[0]
         return x, y
 
     @property
@@ -568,12 +778,21 @@ class Car:
     def __init__(self,
                  lane: Lane,
                  *,
+                 accel: Optional[float] = None,
+                 color: Optional[int] = None,
                  speed: Optional[float] = None,
-                 accel: Optional[float] = None
                  ) -> None:
         self.lane = lane
         self.road = lane.road
         self.size = (30, 30)
+
+        if not color:
+            self.color = random.randint(1, 9)
+        else:
+            self.color = color
+
+        self.load_sprites()
+
         self.old_view_rect = lane.view.rect.width, lane.view.rect.height
         r_modifier = random.random()
         self._speed = speed or Car.BASE_SPEED + r_modifier
@@ -666,9 +885,9 @@ class Car:
             self.accelerate()
             return
 
-        if math.hypot(self.velocity[0], self.velocity[1]) < 0.01:
-            self.accelerate()
-            return
+        # if math.hypot(self.velocity[0], self.velocity[1]) < 0.01:
+        #     self.accelerate()
+        #     return
 
         if self.lookahead.colliderect(self.road.get_light_bound()):
             if not self.road.is_active:
@@ -690,7 +909,7 @@ class Car:
         if isinstance(self.lane, LaneLeft):
             if isinstance(self.road, RoadTop) or isinstance(self.road, RoadLeft):
                 if self.rect.colliderect(self.road.get_bound()):
-                    if self.rect.colliderect(self.left.get_bound()):
+                    if self.lookahead.colliderect(self.left.get_bound()):
                         car_indexes = self.opposite.get_bound().collidelistall(oppo_cars)
                         for i in car_indexes:
                             car = oppo_cars[i]
@@ -745,20 +964,17 @@ class Car:
         if self.simulator.paused:
             return
 
-        current_time = time.time()
         dt = self.simulator.dt
         game_speed = self.simulator.speed
-        t = min(1, (current_time - self.time) / dt)
-        vel = ease(t) * game_speed
 
         if self.is_turning:
             self.update_turn()
-        radians = math.radians(self.orientation)
+        orientation = self.snap_orientation(self.orientation)
+        radians = math.radians(orientation)
         # Calculate the magnitude of velocity change
-        velocity_change = vel * self.speed / 3
 
-        target_velocity_x = self.speed * math.cos(radians) * game_speed
-        target_velocity_y = self.speed * math.sin(radians) * game_speed
+        target_velocity_x = self.speed * math.cos(radians)
+        target_velocity_y = self.speed * math.sin(radians)
 
         if self.state == Car.ACCELERATING:
             # Smoothly interpolate towards the target velocity
@@ -806,7 +1022,7 @@ class Car:
 
             # Check if the new orientation is within 90 degrees from the original orientation
             if abs(potential_orientation - self.ori_orientation) <= 90 or \
-            abs(potential_orientation - self.ori_orientation) >= 270:
+                    abs(potential_orientation - self.ori_orientation) >= 270:
                 self.orientation = potential_orientation
             else:
                 # Adjust the orientation to not exceed 90 degrees from the original orientation
@@ -824,8 +1040,6 @@ class Car:
                 # Assuming speed_2 is a property defining some speed level
                 self._speed = self.speed_2 * 2
                 # Snap to the nearest 90 degrees
-                self.orientation = self.snap_orientation(self.orientation)
-
 
     def snap_orientation(self, orientation):
         # Define the degrees of freedom
@@ -840,7 +1054,8 @@ class Car:
 
         # Consider floating-point precision issues
         for degree in degrees:
-            if abs(normalized_orientation - degree) < 10.0:  # Tolerance for floating-point precision
+            # Tolerance for floating-point precision
+            if abs(normalized_orientation - degree) < 10.0:
                 closest_degree = degree
                 break
 
@@ -878,9 +1093,41 @@ class Car:
 
         return self.rect
 
+    def load_sprites(self) -> list[pygame.Surface]:
+        fn = f"{self.color}.png"
+        sprite_sheet = pygame.image.load(
+            os.path.join("Assets", "cars", fn)
+            ).convert_alpha()
+        sprite_w = 16
+        sprite_h = 16
+        sprite_num = sprite_sheet.get_width() // sprite_w
+
+        sprites = []
+
+        for i in range(sprite_num):
+            sprite = pygame.Surface((sprite_w, sprite_h), pygame.SRCALPHA)
+            sprite.blit(sprite_sheet, (0, 0), (i * sprite_w, 0, sprite_w, sprite_h))
+            scaled = pygame.transform.scale(sprite, (self.size[0] + 10, self.size[1] + 10))
+            sprites.append(scaled)
+
+        self.sprites = sprites
+
+
     def draw(self) -> None:
-        pygame.draw.rect(self.road.window, Color.GREEN, self.rect)
-        # pygame.draw.rect(self.road.window, Color.GRAY, self.lookahead, 2)
+        height = 1
+        if self.orientation == 90:  # Game's downward
+            render_angle = 270
+        elif self.orientation == 270:  # Game's upward
+            render_angle = 90
+        else:
+            render_angle = self.orientation
+        for i, img in enumerate(self.sprites):
+            rotated_img = pygame.transform.rotate(img, render_angle)
+            x = self.rect.x
+            y = self.rect.y - i * height
+
+            self.simulator.window.blit(rotated_img, (x, y))
+        # pygame.draw.rect(self.road.window, Color.GREEN, self.rects)
 
 
 class TrafficLight:
@@ -897,23 +1144,21 @@ class TrafficLight:
         elif self.state == State.Light.GREEN:
             self.state = State.Light.RED
 
-    @property
-    def coords(self) -> tuple[int, int]:
-        return self.road.get_light_coords()
 
-    def color(self) -> tuple[int, int, int]:
+    def color(self) -> list[tuple[int, int, int]]:
         if self.state == State.Light.RED:
-            return Color.RED
+            return [Color.RED, Color.INACTIVE_YELLOW, Color.INACTIVE_GREEN]
         elif self.state == State.Light.YELLOW:
-            return Color.YELLOW
+            return [Color.INACTIVE_RED, Color.YELLOW, Color.INACTIVE_GREEN]
         elif self.state == State.Light.GREEN:
-            return Color.GREEN
+            return [Color.INACTIVE_RED, Color.INACTIVE_YELLOW, Color.GREEN]
 
     def draw(self) -> None:
-        x, y = self.coords
-        pygame.draw.rect(self.road.window, self.color(), (x, y, *self.road.light._size))
-
-
+        x, y = self.road.get_light_coords()
+        colors = self.color()
+        pygame.draw.circle(self.road.window, colors[0], (x, y), 10)
+        pygame.draw.circle(self.road.window, colors[1], (x, y + 20), 10)
+        pygame.draw.circle(self.road.window, colors[2], (x, y + 40), 10)
 
 
 class State:
@@ -936,7 +1181,7 @@ class Color:
     WHITE = (230, 230, 230)
     BLACK = (20, 20, 20)
     RED = (230, 0, 0)
-    GREEN = (0, 230, 0)
+    GREEN = (70, 147, 73)
     BLUE = (0, 0, 230)
     YELLOW = (230, 230, 0)
     GRAY = (200, 200, 200)
@@ -949,6 +1194,10 @@ class Color:
     BUTTON = (100, 100, 100)
     BUTTON_HOVER = (150, 150, 150)
 
+    INACTIVE_RED = (100, 0, 0)
+    INACTIVE_YELLOW = (100, 100, 0)
+    INACTIVE_GREEN = (0, 100, 0)
+
 
 class Direction:
 
@@ -956,6 +1205,7 @@ class Direction:
     RIGHT = 1
     DOWN = 2
     LEFT = 3
+
 
 class UIElement:
 
@@ -982,6 +1232,7 @@ class UIElement:
                  source: int = 0,
                  offset: tuple[int, int] = (0, 0),
                  color: tuple[int, int, int] = Color.WHITE,
+                 background_color: tuple[int, int, int] = Color.WHITE,
                  width: int = 20,
                  height: int = 10,
                  layer: int = 0,
@@ -993,10 +1244,11 @@ class UIElement:
         else:
             self.view = self.sim
         self.name = name
-        self.anchor = anchor # frame anchor
-        self.source = source # element anchor
+        self.anchor = anchor  # frame anchor
+        self.source = source  # element anchor
         self.offset = offset
         self.color = color
+        self.background_color = background_color
         self.z = layer
         self.width = width
         self.height = height
@@ -1006,7 +1258,6 @@ class UIElement:
         self.rect = pygame.Rect(0, 0, width, height)
         self.update()
         self.load()
-
 
     def load(self) -> None:
         self.sim.add_element(self)
@@ -1036,10 +1287,11 @@ class UIElement:
     def show(self) -> bool:
         self.hidden = False
 
-
     def update(self) -> None:
         v_width, v_height = self.view.width, self.view.height
         x, y = self.offset
+        x += self.view.rect.x
+        y += self.view.rect.y
         m = self.margin
 
         # Determine outer anchor positions
@@ -1118,6 +1370,7 @@ class Text(UIElement):
                  source: int = 0,
                  offset: tuple[int, int] = (0, 0),
                  color: tuple[int, int, int] = Color.WHITE,
+                 background_color: tuple[int, int, int] = Color.WHITE,
                  width: int = 20,
                  height: int = 10,
                  layer: int = 0,
@@ -1134,6 +1387,7 @@ class Text(UIElement):
                          offset=offset,
                          source=source,
                          color=color,
+                         background_color=background_color,
                          width=width,
                          height=height,
                          layer=layer,
@@ -1144,7 +1398,8 @@ class Text(UIElement):
         self.text_to_display = self.text(self.sim) if callable(
             self.text) else self.text
 
-        self.text_surface = self.font.render(self.text_to_display, True, self.color)
+        self.text_surface = self.font.render(
+            self.text_to_display, True, self.color)
 
         self.text_width, self.text_height = self.text_surface.get_size()
 
@@ -1155,11 +1410,10 @@ class Text(UIElement):
         self.text_y = self.rect.y
         super().update()
 
-
     def draw(self) -> None:
         # if not self.sim.needs_refresh:
         #     return
-        self.sim.window.fill(Color.WHITE, self.rect)
+        self.sim.window.fill(self.background_color, self.rect)
         self.update()
         self.sim.window.blit(self.text_surface, (self.text_x, self.text_y))
         pygame.display.update(self.rect)
@@ -1176,6 +1430,7 @@ class Button(UIElement):
                  source: int = 0,
                  offset: tuple[int, int] = (0, 0),
                  color: tuple[int, int, int] = Color.WHITE,
+                 background_color: tuple[int, int, int] = Color.WHITE,
                  width: int = 20,
                  height: int = 10,
                  layer: int = 0,
@@ -1199,6 +1454,7 @@ class Button(UIElement):
                          offset=offset,
                          source=source,
                          color=color,
+                         background_color=background_color,
                          width=width,
                          height=height,
                          layer=layer,
@@ -1207,7 +1463,6 @@ class Button(UIElement):
 
     def load(self) -> None:
         self.sim.add_button(self)
-
 
     def handle_event(self, event: pygame.event):
         mouse_pos = event.pos  # Get the position of the mouse when clicked
@@ -1218,7 +1473,8 @@ class Button(UIElement):
         if self.sim.needs_refresh:
             self.update()
         surface = self.sim.window
-        text_to_display = self.text(self.sim) if callable(self.text) else self.text
+        text_to_display = self.text(self.sim) if callable(
+            self.text) else self.text
 
         # Render the text
         text_surface = self.font.render(text_to_display, True, self.color)
@@ -1238,7 +1494,7 @@ class Button(UIElement):
 
         # Draw the button background
         pygame.draw.rect(surface, color, self.rect,
-                        border_radius=self.border_radius)
+                         border_radius=self.border_radius)
 
         # Blit the text onto the surface at the calculated position
         surface.blit(text_surface, (text_x, text_y))
