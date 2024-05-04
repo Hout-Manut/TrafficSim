@@ -41,7 +41,7 @@ def main(sim: Simulator):
         check_events(sim)
 
         # if time.time() - time_updated >= 0.5:
-        window.fill(Color.WHITE)
+        window.fill((49, 92, 46))
 
         sim.update()
         sim.move()
