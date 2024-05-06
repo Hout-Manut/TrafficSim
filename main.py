@@ -31,7 +31,8 @@ def main(sim: Simulator):
     draw_fps(sim)
     sim.needs_refresh = True
 
-    sim.load_smart_light(base_offset=60)
+    # Modify lights behavior here, hover on the functions for parameters
+    sim.load_smart_light(base_offset=30)
     sim.load_basic_light(value=50)
 
     load_components(sim)
