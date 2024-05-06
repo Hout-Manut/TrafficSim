@@ -15,6 +15,7 @@ from . import trafficlight
 
 RANDOMLY_ADD_CARS = pygame.USEREVENT + 1
 
+
 class Simulator:
 
     def __init__(self,
@@ -54,6 +55,13 @@ class Simulator:
         self.multiplier = 1
 
         pygame.time.set_timer(RANDOMLY_ADD_CARS, self.base_spawn_rate)
+
+        self.divider = pygame.image.load(os.path.join("Assets", "divider.png"))
+        self.divider = pygame.transform.scale(
+            self.divider, (self.divider.get_width(), self.window.get_height()))
+        self.divider_rect = self.divider.get_rect()
+        self.divider_rect.center = (
+            self.window.get_width() / 2, self.window.get_height() / 2)
 
     def reset_all(self) -> None:
         del self.view_1
@@ -100,10 +108,11 @@ class Simulator:
                          no_traffic_multiplier: float = 5.0,
                          value_per_car: float = 1.0
                          ) -> None:
-        self.light_1 = trafficlight.Smart(self, max_value, base_offset, increment_value, no_traffic_multiplier, value_per_car)
+        self.light_1 = trafficlight.Smart(
+            self, max_value, base_offset, increment_value, no_traffic_multiplier, value_per_car)
 
     def load_basic_light(self,
-                         value = 120.0
+                         value=120.0
                          ) -> None:
         self.light_2 = trafficlight.Basic(self, value)
 
@@ -117,13 +126,13 @@ class Simulator:
             self.pause()
         self.time_speed = max(0.0, self.time_speed - 0.1)
 
-    def get_active_road_cars(self, view_index = 1) -> int:
+    def get_active_road_cars(self, view_index=1) -> int:
         if view_index == 1:
             return self.view_1.get_all_active_road_cars()
         elif view_index == 2:
             return self.view_2.get_all_active_road_cars()
 
-    def get_inactive_road_cars(self, view_index = 1) -> int:
+    def get_inactive_road_cars(self, view_index=1) -> int:
         if view_index == 1:
             return self.view_1.get_all_inactive_road_cars()
         elif view_index == 2:
@@ -156,7 +165,7 @@ class Simulator:
         for button in self.buttons:
             button.handle_event(event)
 
-    def toggle_lights(self, view_index = 1) -> None:
+    def toggle_lights(self, view_index=1) -> None:
         if view_index == 1:
             self.view_1.toggle_lights()
             return
@@ -184,11 +193,13 @@ class Simulator:
 
     def increase_spawn_rate(self) -> None:
         self.multiplier = min(5.0, self.multiplier + 0.1)
-        pygame.time.set_timer(RANDOMLY_ADD_CARS, int(self.base_spawn_rate / self.multiplier))
+        pygame.time.set_timer(RANDOMLY_ADD_CARS, int(
+            self.base_spawn_rate / self.multiplier))
 
     def decrease_spawn_rate(self) -> None:
         self.multiplier = max(0.1, self.multiplier - 0.1)
-        pygame.time.set_timer(RANDOMLY_ADD_CARS, int(self.base_spawn_rate / self.multiplier))
+        pygame.time.set_timer(RANDOMLY_ADD_CARS, int(
+            self.base_spawn_rate / self.multiplier))
 
     def randomly_add_cars(self, chance: Optional[int] = 50, road_index: Optional[int] = None) -> None:
         ran = random.randint(0, 100)
@@ -216,6 +227,7 @@ class Simulator:
             element.draw()
         self.view_1.draw_cars()
         self.view_2.draw_cars()
+        self.window.blit(self.divider, self.divider_rect)
         for element in self.mg_elements:
             element.draw()
         for element in self.fg_elements:
@@ -226,7 +238,12 @@ class Simulator:
         self.needs_refresh = False
 
     def update(self) -> None:
-        # if self.needs_refresh:
+        if self.needs_refresh:
+            self.divider = pygame.transform.scale(
+                self.divider, (self.divider.get_width(), self.view_1.road_top.road_width *3))
+            self.divider_rect = self.divider.get_rect()
+            self.divider_rect.center = (self.window.get_width() / 2,
+                                        self.window.get_height() / 2)
         self.view_1.update()
         self.light_1.update()
         self.view_2.update()
@@ -283,7 +300,8 @@ class View:
         return self.rect.height
 
     def update_cars(self) -> None:
-        self.cars = self.road_top.cars + self.road_right.cars + self.road_bottom.cars + self.road_left.cars
+        self.cars = self.road_top.cars + self.road_right.cars + \
+            self.road_bottom.cars + self.road_left.cars
         if len(self.cars) > 30:
             self.road_top.car_spawn_distance = 500
             self.road_right.car_spawn_distance = 500
@@ -302,7 +320,6 @@ class View:
             self.road_right.update_lane()
             self.road_bottom.update_lane()
             self.road_left.update_lane()
-
 
     def get_all_cars(self) -> list[Car]:
         return self.cars
@@ -425,7 +442,8 @@ class Road:
         self.center = pygame.image.load(
             os.path.join("Assets", "intersect.png")
         )
-        self.zebras = [pygame.transform.rotate(pygame.image.load(os.path.join("Assets", "zebra.png")), 90 * i) for i in range(4)]
+        self.zebras = [pygame.transform.rotate(pygame.image.load(
+            os.path.join("Assets", "zebra.png")), 90 * i) for i in range(4)]
         self.sprite = pygame.image.load(
             os.path.join("Assets", "road.png")
         )
@@ -436,13 +454,15 @@ class Road:
 
     def get_active_cars(self) -> int:
         if self.is_active:
-            cars = self.get_half_bound().collidelistall([car.rect for car in self.cars])
+            cars = self.get_half_bound().collidelistall(
+                [car.rect for car in self.cars])
             return len(cars)
         return 0
 
     def get_inactive_cars(self) -> int:
         if not self.is_active:
-            cars = self.get_half_bound().collidelistall([car.rect for car in self.cars])
+            cars = self.get_half_bound().collidelistall(
+                [car.rect for car in self.cars])
             return len(cars)
         return 0
 
@@ -729,6 +749,7 @@ class RoadBottom(Road):
     @property
     def direction(self) -> int:
         return 2
+
 
 class RoadLeft(Road):
 
@@ -1071,8 +1092,10 @@ class Car:
 
         if self.state == Car.ACCELERATING:
             # Smoothly interpolate towards the target velocity
-            self.velocity[0] = lerp(self.velocity[0], target_velocity_x, dt, game_speed)
-            self.velocity[1] = lerp(self.velocity[1], target_velocity_y, dt, game_speed)
+            self.velocity[0] = lerp(
+                self.velocity[0], target_velocity_x, dt, game_speed)
+            self.velocity[1] = lerp(
+                self.velocity[1], target_velocity_y, dt, game_speed)
         elif self.state == Car.DECELERATING:
             # Apply gradual deceleration
             # Decelerating faster than accelerating
@@ -1191,7 +1214,7 @@ class Car:
         fn = f"{self.color}.png"
         sprite_sheet = pygame.image.load(
             os.path.join("Assets", "cars", fn)
-            ).convert_alpha()
+        ).convert_alpha()
         sprite_w = 16
         sprite_h = 16
         sprite_num = sprite_sheet.get_width() // sprite_w
@@ -1200,12 +1223,13 @@ class Car:
 
         for i in range(sprite_num):
             sprite = pygame.Surface((sprite_w, sprite_h), pygame.SRCALPHA)
-            sprite.blit(sprite_sheet, (0, 0), (i * sprite_w, 0, sprite_w, sprite_h))
-            scaled = pygame.transform.scale(sprite, (self.size[0] + 10, self.size[1] + 10))
+            sprite.blit(sprite_sheet, (0, 0),
+                        (i * sprite_w, 0, sprite_w, sprite_h))
+            scaled = pygame.transform.scale(
+                sprite, (self.size[0] + 10, self.size[1] + 10))
             sprites.append(scaled)
 
         self.sprites = sprites
-
 
     def draw(self) -> None:
         height = 1
@@ -1237,7 +1261,6 @@ class TrafficLight:
         #     self.state = State.Light.GREEN
         elif self.state == State.Light.GREEN:
             self.state = State.Light.RED
-
 
     def color(self) -> list[tuple[int, int, int]]:
         if self.state == State.Light.RED:
