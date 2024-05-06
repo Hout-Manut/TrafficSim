@@ -29,6 +29,7 @@ class Smart:
         if self.sim.paused:
             return
         dt = self.sim.dt
+        game_speed = self.sim.speed
         self.inactive_value = 0
 
         active_cars: int = self.sim.get_active_road_cars(1)
@@ -52,7 +53,7 @@ class Smart:
 
         self.active_value = active_value
 
-        self.passive_increase += self.passive_increment * inactive_boost * dt
+        self.passive_increase += self.passive_increment * inactive_boost * dt * game_speed
 
         self.inactive_value = inactive_cars * self.value_per_car + self.passive_increase
 
@@ -86,7 +87,8 @@ class Basic:
         if self.sim.paused:
             return
         dt = self.sim.dt
-        self.current -= 1.0 * dt
+        game_speed = self.sim.speed
+        self.current -= 1.0 * dt * game_speed
         if self.current < 0.0:
             self.toggle_light()
 

@@ -13,6 +13,7 @@ import pygame
 from .utills import ease, lerp
 from . import trafficlight
 
+RANDOMLY_ADD_CARS = pygame.USEREVENT + 1
 
 class Simulator:
 
@@ -49,6 +50,36 @@ class Simulator:
         self.buttons: list[Button] = []
         self.paused = False
         self.dt = 0.0
+        self.base_spawn_rate = 500
+        self.multiplier = 1
+
+        pygame.time.set_timer(RANDOMLY_ADD_CARS, self.base_spawn_rate)
+
+    def reset_all(self) -> None:
+        del self.view_1
+        del self.view_2
+
+        self.view_1 = ViewLeft(self)
+        self.view_2 = ViewRight(self)
+
+        self.view_1.toggle_top_lights()
+        self.view_1.toggle_bottom_lights()
+        self.view_2.toggle_top_lights()
+        self.view_2.toggle_bottom_lights()
+
+        self.needs_refresh = True
+
+    @property
+    def time(self) -> int:
+        return int(time.time() - self.time_started)
+
+    def reset_time(self) -> None:
+        self.time_started = time.time()
+
+    def reset(self) -> None:
+        self.reset_time()
+        self.view_1.reset_car_leaves()
+        self.view_2.reset_car_leaves()
 
     @property
     def speed(self) -> float:
@@ -148,6 +179,17 @@ class Simulator:
     def pause(self) -> None:
         self.paused = not self.paused
 
+    def spawn_multiplier(self) -> None:
+        return f"{self.multiplier:.2f}x"
+
+    def increase_spawn_rate(self) -> None:
+        self.multiplier = min(5.0, self.multiplier + 0.1)
+        pygame.time.set_timer(RANDOMLY_ADD_CARS, int(self.base_spawn_rate / self.multiplier))
+
+    def decrease_spawn_rate(self) -> None:
+        self.multiplier = max(0.1, self.multiplier - 0.1)
+        pygame.time.set_timer(RANDOMLY_ADD_CARS, int(self.base_spawn_rate / self.multiplier))
+
     def randomly_add_cars(self, chance: Optional[int] = 50, road_index: Optional[int] = None) -> None:
         ran = random.randint(0, 100)
         color = random.randint(1, 9)
@@ -216,6 +258,21 @@ class View:
         self.road_left = RoadLeft(self)
 
         self.cars = []
+        self.car_leaves = 0
+
+    def increment_car_leaves(self) -> None:
+        self.car_leaves += 1
+
+    def reset_car_leaves(self) -> None:
+        self.car_leaves = 0
+
+    def average_car_leaves(self) -> str:
+        try:
+            time_since_start = self.sim.time
+            minutes = time_since_start / 60
+            return f"{self.car_leaves / minutes:.2f}"
+        except ZeroDivisionError:
+            return "N/A"
 
     @property
     def width(self) -> int:
@@ -540,9 +597,11 @@ class RoadTop(Road):
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
         x = view[2] // 2 - self.road_width + view[0]
-        y = 0
+        # y = 0
+        y = -view[3] // 2
         w = self.road_width
-        h = view[3] // 2 - self.road_width
+        # h = view[3] // 2 - self.road_width
+        h = view[3] - self.road_width
         return pygame.Rect(x, y, w, h)
 
     def get_bound(self) -> pygame.Rect:
@@ -590,7 +649,8 @@ class RoadRight(Road):
                 self.view.rect.width, self.view.rect.height]
         x = view[2] // 2 + self.road_width + view[0]
         y = view[3] // 2 - self.road_width
-        w = view[2] // 2 - self.road_width
+        # w = view[2] // 2 - self.road_width
+        w = view[2] - self.road_width
         h = self.road_width
         return pygame.Rect(x, y, w, h)
 
@@ -636,7 +696,8 @@ class RoadBottom(Road):
         x = view[2] // 2 + view[0]
         y = view[3] // 2 + self.road_width
         w = self.road_width
-        h = view[3] // 2 - self.road_width
+        # h = view[3] // 2 - self.road_width
+        h = view[3] - self.road_width
         return pygame.Rect(x, y, w, h)
 
     def get_bound(self) -> pygame.Rect:
@@ -678,9 +739,11 @@ class RoadLeft(Road):
     def get_half_bound(self) -> pygame.Rect:
         view = [self.view.rect.x, self.view.rect.y,
                 self.view.rect.width, self.view.rect.height]
-        x = 0 + view[0]
+        # x = 0 + view[0]
+        x = view[2] // 2 + view[0]
         y = view[3] // 2
-        w = view[2] // 2 - self.road_width
+        # w = view[2] // 2 - self.road_width
+        w = view[2] - self.road_width
         h = self.road_width
         return pygame.Rect(x, y, w, h)
 
@@ -905,6 +968,7 @@ class Car:
         car_rects = [car.rect for car in cars if car is not self]
         oppo_cars = self.opposite.cars
         left_cars = self.left.cars
+        right_cars = self.right.cars
 
         if self.turned:
             self.accelerate()
@@ -921,7 +985,7 @@ class Car:
             elif self.lookahead.collidelist(car_rects) != -1:
                 self.decelerate()
                 return
-            elif self.road.get_bound().collidelist(oppo_cars) != -1:
+            elif self.road.get_bound().collidelist(right_cars) != -1:
                 self.decelerate()
                 return
             if self.lookahead.colliderect(self.left.rect):
@@ -939,9 +1003,11 @@ class Car:
                         for i in car_indexes:
                             car = oppo_cars[i]
                             if isinstance(oppo_cars[i].lane, LaneLeft):
-                                if abs(car.x - car.lane.car_spawn[0]) > 400 or abs(car.y - car.lane.car_spawn[1]) > 300:
+                                if abs(car.x - car.lane.car_spawn[0]) > 500 or abs(car.y - car.lane.car_spawn[1]) > 400:
                                     self.decelerate()
                                     return
+                    else:
+                        self.accelerate()
             if self.rect.colliderect(self.right.get_bound()):
                 if not self.turned:
                     self.is_turning = True
@@ -991,6 +1057,8 @@ class Car:
 
         dt = self.simulator.dt
         game_speed = self.simulator.speed
+        current_time = time.time()
+        t = min(1, (current_time - self.time))
 
         if self.is_turning:
             self.update_turn()
@@ -1003,8 +1071,8 @@ class Car:
 
         if self.state == Car.ACCELERATING:
             # Smoothly interpolate towards the target velocity
-            self.velocity[0] = lerp(self.velocity[0], target_velocity_x, dt)
-            self.velocity[1] = lerp(self.velocity[1], target_velocity_y, dt)
+            self.velocity[0] = lerp(self.velocity[0], target_velocity_x, dt, game_speed)
+            self.velocity[1] = lerp(self.velocity[1], target_velocity_y, dt, game_speed)
         elif self.state == Car.DECELERATING:
             # Apply gradual deceleration
             # Decelerating faster than accelerating
@@ -1091,6 +1159,7 @@ class Car:
         self.rect = self.update_position()
         if abs(self.x - self.lane.car_spawn[0]) > 2000 or abs(self.y - self.lane.car_spawn[1]) > 2000:
             self.lane.road.cars.remove(self)
+            self.view.increment_car_leaves()
             del self
 
     def update_position(self) -> pygame.Rect:
@@ -1205,7 +1274,7 @@ class Color:
 
     WHITE = (230, 230, 230)
     BLACK = (20, 20, 20)
-    RED = (230, 0, 0)
+    RED = (200, 0, 0)
     GREEN = (70, 147, 73)
     BLUE = (0, 0, 230)
     YELLOW = (230, 230, 0)
@@ -1216,7 +1285,7 @@ class Color:
     MENU_BG = (1, 1, 1)
 
     GRASS = (60, 150, 60)
-    BUTTON = (100, 100, 100)
+    BUTTON = (90, 90, 90)
     BUTTON_HOVER = (150, 150, 150)
 
     INACTIVE_RED = (100, 0, 0)
