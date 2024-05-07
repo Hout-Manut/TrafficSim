@@ -14,7 +14,7 @@ FHD_PLUS = 1920, 1200
 QHD = 2560, 1440
 
 WIDTH, HEIGHT = FHD
-FPS = 1000
+FPS = 60
 flags = pygame.RESIZABLE
 pygame.init()
 device_info = pygame.display.Info()
@@ -81,39 +81,161 @@ def load_components(sim: Simulator):
                       dynamic=True
                       )
 
-    time_text_reset = Button(sim,
-                     anchor=UIElement.TOP,
-                     source=UIElement.TOP,
-                    #  background_color=(49, 92, 46),
-                     font=base_font,
-                     text=lambda sim: f"Time: {sim.time}",
-                     layer=UIElement.FOREGROUND,
-                     width=100,
-                     height=30,
-                     border_radius=5,
-                     action=lambda sim: sim.reset(),
-                     button_color=(49, 92, 46),
-                     hover_color=(70, 100, 70)
-                     )
-
     avg_leave = Text(sim,
-                       anchor=UIElement.TOP,
-                       source=UIElement.CENTER,
-                       font=base_font,
-                       text="Avg. Leave/Min",
-                       offset=(0, 60),
-                       background_color=(49, 92, 46),
-    )
+                     anchor=UIElement.TOP,
+                     source=UIElement.CENTER,
+                     font=base_font,
+                     text="Avg. Leave/Min",
+                     offset=(0, 60),
+                     background_color=(49, 92, 46),
+                     )
     base_font = pygame.font.Font(
         os.path.join("Assets", "Roboto-Light.ttf"), 20)
+    lane_1_multi = Text(sim,
+                        anchor=UIElement.TOP_L,
+                        source=UIElement.TOP_L,
+                        font=base_font,
+                        offset=(0, 160),
+                        text=lambda sim: f"R1 Traffic: {sim.get_spawn_str(0)}",
+                        layer=UIElement.FOREGROUND,
+                        background_color=(49, 92, 46),
+                        dynamic=True
+                        )
+    lane_1_button_1 = Button(sim,
+                             font=base_font,
+                             offset=(150, 161),
+                             text="+",
+                             layer=UIElement.FOREGROUND,
+                             width=30,
+                             height=20,
+                             border_radius=5,
+                             action=lambda sim: sim.increase_spawn_rate(0)
+                             )
+    lane_1_button_2 = Button(sim,
+                             font=base_font,
+                             offset=(185, 161),
+                             text="-",
+                             layer=UIElement.FOREGROUND,
+                             width=30,
+                             height=20,
+                             border_radius=5,
+                             action=lambda sim: sim.decrease_spawn_rate(0)
+                             )
+    lane_2_multi = Text(sim,
+                        anchor=UIElement.TOP_L,
+                        source=UIElement.TOP_L,
+                        font=base_font,
+                        offset=(0, 200),
+                        text=lambda sim: f"R2 Traffic: {sim.get_spawn_str(1)}",
+                        layer=UIElement.FOREGROUND,
+                        background_color=(49, 92, 46),
+                        dynamic=True
+                        )
+    lane_2_button_1 = Button(sim,
+                             font=base_font,
+                             offset=(150, 201),
+                             text="+",
+                             layer=UIElement.FOREGROUND,
+                             width=30,
+                             height=20,
+                             border_radius=5,
+                             action=lambda sim: sim.increase_spawn_rate(1)
+                             )
+    lane_2_button_2 = Button(sim,
+                             font=base_font,
+                             offset=(185, 201),
+                             text="-",
+                             layer=UIElement.FOREGROUND,
+                             width=30,
+                             height=20,
+                             border_radius=5,
+                             action=lambda sim: sim.decrease_spawn_rate(1)
+                             )
+    lane_3_multi = Text(sim,
+                        anchor=UIElement.TOP_L,
+                        source=UIElement.TOP_L,
+                        font=base_font,
+                        offset=(0, 240),
+                        text=lambda sim: f"R3 Traffic: {sim.get_spawn_str(2)}",
+                        layer=UIElement.FOREGROUND,
+                        background_color=(49, 92, 46),
+                        dynamic=True
+                        )
+    lane_1_button_1 = Button(sim,
+                             font=base_font,
+                             offset=(150, 241),
+                             text="+",
+                             layer=UIElement.FOREGROUND,
+                             width=30,
+                             height=20,
+                             border_radius=5,
+                             action=lambda sim: sim.increase_spawn_rate(2)
+                             )
+    lane_1_button_2 = Button(sim,
+                             font=base_font,
+                             offset=(185, 241),
+                             text="-",
+                             layer=UIElement.FOREGROUND,
+                             width=30,
+                             height=20,
+                             border_radius=5,
+                             action=lambda sim: sim.decrease_spawn_rate(2)
+                             )
+    lane_4_multi = Text(sim,
+                        anchor=UIElement.TOP_L,
+                        source=UIElement.TOP_L,
+                        font=base_font,
+                        offset=(0, 280),
+                        text=lambda sim: f"R4 Traffic: {sim.get_spawn_str(3)}",
+                        layer=UIElement.FOREGROUND,
+                        background_color=(49, 92, 46),
+                        dynamic=True
+                        )
+    lane_1_button_1 = Button(sim,
+                             font=base_font,
+                             offset=(150, 281),
+                             text="+",
+                             layer=UIElement.FOREGROUND,
+                             width=30,
+                             height=20,
+                             border_radius=5,
+                             action=lambda sim: sim.increase_spawn_rate(3)
+                             )
+    lane_1_button_2 = Button(sim,
+                             font=base_font,
+                             offset=(185, 281),
+                             text="-",
+                             layer=UIElement.FOREGROUND,
+                             width=30,
+                             height=20,
+                             border_radius=5,
+                             action=lambda sim: sim.decrease_spawn_rate(3)
+                             )
+
+    time_text_reset = Button(sim,
+                             anchor=UIElement.TOP,
+                             source=UIElement.TOP,
+                             #  background_color=(49, 92, 46),
+                             font=base_font,
+                             text=lambda sim: f"Time: {sim.time}",
+                             layer=UIElement.FOREGROUND,
+                             width=100,
+                             height=30,
+                             border_radius=5,
+                             action=lambda sim: sim.reset(),
+                             button_color=(49, 92, 46),
+                             hover_color=(70, 100, 70)
+                             )
+
     avg_leave_data = Text(sim,
-                       anchor=UIElement.TOP,
-                       source=UIElement.CENTER,
-                       font=base_font,
-                       text=lambda sim: f"{sim.view_1.average_car_leaves()} | {sim.view_2.average_car_leaves()}",
-                       offset=(0, 90),
-                       background_color=(49, 92, 46),
-    )
+                          anchor=UIElement.TOP,
+                          source=UIElement.CENTER,
+                          font=base_font,
+                          text=lambda sim: f"{sim.view_1.average_car_leaves()} | {
+                              sim.view_2.average_car_leaves()}",
+                          offset=(0, 90),
+                          background_color=(49, 92, 46),
+                          )
 
     speed_inc_button = Button(sim,
                               anchor=UIElement.TOP_L,
@@ -217,7 +339,7 @@ def load_components(sim: Simulator):
                             text=lambda sim: sim.light_1.get_current_value(),
                             layer=UIElement.BACKGROUND,
                             dynamic=True
-    )
+                            )
     view_2_countdown = Text(sim,
                             view=sim.view_2,
                             anchor=UIElement.CENTER,
@@ -228,7 +350,37 @@ def load_components(sim: Simulator):
                             text=lambda sim: sim.light_2.get_current_value(),
                             layer=UIElement.BACKGROUND,
                             dynamic=True
+                            )
+
+    preset_1 = Button(
+        sim,
+        anchor=UIElement.BOTTOM_L,
+        source=UIElement.BOTTOM_L,
+        color=Color.WHITE,
+        offset=(0, -40),
+        font=base_font,
+        text="Scenario 1",
+        width=100,
+        height=30,
+        layer=UIElement.FOREGROUND,
+        border_radius=5,
+        action=lambda sim: sim.set_preset(r1=2.0, r2=1.0, r3=2.0, r4=1.0),
     )
+    preset_1 = Button(
+        sim,
+        anchor=UIElement.BOTTOM_L,
+        source=UIElement.BOTTOM_L,
+        color=Color.WHITE,
+        offset=(0, -80),
+        font=base_font,
+        text="Scenario 2",
+        width=100,
+        height=30,
+        layer=UIElement.FOREGROUND,
+        border_radius=5,
+        action=lambda sim: sim.set_preset(r1=2.0, r2=0.1, r3=2.0, r4=0.1),
+    )
+
     reset = Button(sim,
                    anchor=UIElement.BOTTOM_R,
                    source=UIElement.BOTTOM_R,
@@ -242,8 +394,7 @@ def load_components(sim: Simulator):
                    layer=UIElement.FOREGROUND,
                    border_radius=5,
                    action=lambda sim: sim.reset_all(),
-    )
-
+                   )
 
 
 def check_events(sim: Simulator):
@@ -265,13 +416,8 @@ def check_events(sim: Simulator):
                 pygame.display.set_mode(
                     (event.w, event.h), pygame.RESIZABLE)
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
-                if sim.state == State.MENU:
-                    sim.stop()
-                    pygame.quit()
-                    exit()
-                else:
-                    sim.go_to_menu()
+            if event.key == pygame.K_h:
+                sim.hide_hud = not sim.hide_hud
             elif event.key == pygame.K_F11:
                 sim.toggle_fullscreen()
         elif event.type == pygame.MOUSEBUTTONDOWN:

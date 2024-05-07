@@ -66,7 +66,7 @@ class Smart:
         return f"{int(self.inactive_value)}:{int(self.active_value)}"
 
     def toggle_light(self):
-        self.sim.toggle_lights(1)
+        self.sim.toggle_lights(0)
         self.active_cars = 0
         self.active_value = 0
         self.inactive_value = 0
@@ -96,5 +96,5 @@ class Basic:
         return str(int(self.current))
 
     def toggle_light(self):
-        self.sim.toggle_lights(2)
+        self.sim.toggle_lights(1)
         self.current = self.value

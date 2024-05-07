@@ -36,10 +36,14 @@ class Simulator:
         self.view_1 = ViewLeft(self)
         self.view_2 = ViewRight(self)
 
-        self.view_1.toggle_top_lights()
-        self.view_1.toggle_bottom_lights()
-        self.view_2.toggle_top_lights()
-        self.view_2.toggle_bottom_lights()
+        self.hide_hud = False
+
+        self.road_spawn_rate = [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            ]
 
         self.light_1 = None
         self.light_2 = None
@@ -51,7 +55,7 @@ class Simulator:
         self.buttons: list[Button] = []
         self.paused = False
         self.dt = 0.0
-        self.base_spawn_rate = 500
+        self.base_spawn_rate = 1000
         self.multiplier = 1
 
         pygame.time.set_timer(RANDOMLY_ADD_CARS, self.base_spawn_rate)
@@ -69,11 +73,6 @@ class Simulator:
 
         self.view_1 = ViewLeft(self)
         self.view_2 = ViewRight(self)
-
-        self.view_1.toggle_top_lights()
-        self.view_1.toggle_bottom_lights()
-        self.view_2.toggle_top_lights()
-        self.view_2.toggle_bottom_lights()
 
         self.needs_refresh = True
 
@@ -100,6 +99,9 @@ class Simulator:
     @speed.setter
     def speed(self, value: float) -> None:
         self.time_speed = value
+
+    def get_spawn_str(self, index) -> str:
+        return f"{self.road_spawn_rate[index]:.2f}x"
 
     def load_smart_light(self,
                          max_value: float = 120,
@@ -165,11 +167,11 @@ class Simulator:
         for button in self.buttons:
             button.handle_event(event)
 
-    def toggle_lights(self, view_index=1) -> None:
-        if view_index == 1:
+    def toggle_lights(self, view_index=0) -> None:
+        if view_index == 0:
             self.view_1.toggle_lights()
             return
-        elif view_index == 2:
+        elif view_index == 1:
             self.view_2.toggle_lights()
             return
         self.view_1.toggle_lights()
@@ -188,33 +190,45 @@ class Simulator:
     def pause(self) -> None:
         self.paused = not self.paused
 
-    def spawn_multiplier(self) -> None:
+    def spawn_multiplier(self) -> str:
         return f"{self.multiplier:.2f}x"
 
-    def increase_spawn_rate(self) -> None:
-        self.multiplier = min(5.0, self.multiplier + 0.1)
-        pygame.time.set_timer(RANDOMLY_ADD_CARS, int(
-            self.base_spawn_rate / self.multiplier))
+    def increase_spawn_rate(self, index: Optional[int] = None) -> None:
+        if index is not None:
+            self.road_spawn_rate[index] = min(2.0, self.road_spawn_rate[index] + 0.1)
+        else:
+            self.multiplier = min(5.0, self.multiplier + 0.1)
+            pygame.time.set_timer(RANDOMLY_ADD_CARS, int(
+                self.base_spawn_rate / self.multiplier))
 
-    def decrease_spawn_rate(self) -> None:
-        self.multiplier = max(0.1, self.multiplier - 0.1)
-        pygame.time.set_timer(RANDOMLY_ADD_CARS, int(
-            self.base_spawn_rate / self.multiplier))
+    def decrease_spawn_rate(self, index: Optional[int] = None) -> None:
+        if index is not None:
+            self.road_spawn_rate[index] = max(0.1, self.road_spawn_rate[index] - 0.1)
+        else:
+            self.multiplier = max(0.1, self.multiplier - 0.1)
+            pygame.time.set_timer(RANDOMLY_ADD_CARS, int(
+                self.base_spawn_rate / self.multiplier))
 
     def randomly_add_cars(self, chance: Optional[int] = 50, road_index: Optional[int] = None) -> None:
-        ran = random.randint(0, 100)
         color = random.randint(1, 9)
-        if road_index:
-            if ran <= chance:
-                direction = random.randint(0, 2)
-                self.view_1[road_index].add_car(direction, color)
-                self.view_2[road_index].add_car(direction, color)
-        else:
+        ran = random.randint(0, 120)
+        direction = random.randint(0, 2)
+        if road_index is None:
             road_index = random.randint(0, 3)
-            if ran <= chance:
-                direction = random.randint(0, 2)
-                self.view_1[road_index].add_car(direction, color)
-                self.view_2[road_index].add_car(direction, color)
+        if ran <= chance * self.road_spawn_rate[road_index]:
+            self.view_1[road_index].add_car(direction, color)
+            self.view_2[road_index].add_car(direction, color)
+
+    def set_preset(self,
+                   r1: Optional[float] = None,
+                   r2: Optional[float] = None,
+                   r3: Optional[float] = None,
+                   r4: Optional[float] = None,
+                   ) -> None:
+        self.road_spawn_rate[0] = self.road_spawn_rate[0] if r1 is None else r1
+        self.road_spawn_rate[1] = self.road_spawn_rate[1] if r2 is None else r2
+        self.road_spawn_rate[2] = self.road_spawn_rate[2] if r3 is None else r3
+        self.road_spawn_rate[3] = self.road_spawn_rate[3] if r4 is None else r4
 
     def draw_debug(self) -> None:
         self.view_1.draw_debug()
@@ -223,17 +237,19 @@ class Simulator:
     def draw(self) -> None:
         self.view_1.draw()
         self.view_2.draw()
-        for element in self.bg_elements:
-            element.draw()
+        if not self.hide_hud:
+            for element in self.bg_elements:
+                element.draw()
         self.view_1.draw_cars()
         self.view_2.draw_cars()
         self.window.blit(self.divider, self.divider_rect)
-        for element in self.mg_elements:
-            element.draw()
-        for element in self.fg_elements:
-            element.draw()
-        for button in self.buttons:
-            button.draw()
+        if not self.hide_hud:
+            for element in self.mg_elements:
+                element.draw()
+            for element in self.fg_elements:
+                element.draw()
+            for button in self.buttons:
+                button.draw()
 
         self.needs_refresh = False
 
@@ -269,10 +285,10 @@ class View:
     def __init__(self, sim: Simulator) -> None:
         self.sim = sim
 
-        self.road_top = RoadTop(self)
-        self.road_right = RoadRight(self)
-        self.road_bottom = RoadBottom(self)
-        self.road_left = RoadLeft(self)
+        self.road_top = RoadTop(self, 2)
+        self.road_right = RoadRight(self, 0)
+        self.road_bottom = RoadBottom(self, 2)
+        self.road_left = RoadLeft(self, 0)
 
         self.cars = []
         self.car_leaves = 0
@@ -424,7 +440,7 @@ class ViewRight(View):
 
 class Road:
 
-    def __init__(self, view: View) -> None:
+    def __init__(self, view: View, light_state: int = 0) -> None:
         self.view = view
         self.car_spawn_distance = 100
         self.lane_left = LaneLeft(self)
@@ -434,7 +450,7 @@ class Road:
         self.rect = self.get_bound()
         self.light_rect = self.get_light_bound()
         self.cars: list[Car] = []
-        self.light = TrafficLight(self)
+        self.light = TrafficLight(self, light_state)
         self.load_sprite()
         self.update_graphic()
 
@@ -452,15 +468,18 @@ class Road:
     def is_active(self) -> bool:
         return True if self.light.state == State.Light.GREEN else False
 
+    def is_green(self) -> bool:
+        return self.light.state == State.Light.GREEN or self.light.state == State.Light.PRE_GREEN
+
     def get_active_cars(self) -> int:
-        if self.is_active:
+        if self.is_green():
             cars = self.get_half_bound().collidelistall(
                 [car.rect for car in self.cars])
             return len(cars)
         return 0
 
     def get_inactive_cars(self) -> int:
-        if not self.is_active:
+        if not self.is_green():
             cars = self.get_half_bound().collidelistall(
                 [car.rect for car in self.cars])
             return len(cars)
@@ -494,6 +513,8 @@ class Road:
             self.rect = self.get_bound()
             self.light_rect = self.get_light_bound()
             self.update_graphic()
+
+        self.light.update()
 
         for car in self.cars:
             car.update()
@@ -1248,36 +1269,6 @@ class Car:
         # pygame.draw.rect(self.road.window, Color.GREEN, self.rects)
 
 
-class TrafficLight:
-
-    def __init__(self, road: Road) -> None:
-        self.road = road
-        self.state = State.Light.RED
-
-    def toggle(self) -> None:
-        if self.state == State.Light.RED:
-            self.state = State.Light.GREEN
-        # elif self.state == State.Light.YELLOW:
-        #     self.state = State.Light.GREEN
-        elif self.state == State.Light.GREEN:
-            self.state = State.Light.RED
-
-    def color(self) -> list[tuple[int, int, int]]:
-        if self.state == State.Light.RED:
-            return [Color.RED, Color.INACTIVE_YELLOW, Color.INACTIVE_GREEN]
-        elif self.state == State.Light.YELLOW:
-            return [Color.INACTIVE_RED, Color.YELLOW, Color.INACTIVE_GREEN]
-        elif self.state == State.Light.GREEN:
-            return [Color.INACTIVE_RED, Color.INACTIVE_YELLOW, Color.GREEN]
-
-    def draw(self) -> None:
-        x, y = self.road.get_light_coords()
-        colors = self.color()
-        pygame.draw.circle(self.road.window, colors[0], (x, y), 10)
-        pygame.draw.circle(self.road.window, colors[1], (x, y + 20), 10)
-        pygame.draw.circle(self.road.window, colors[2], (x, y + 40), 10)
-
-
 class State:
 
     MENU = 0
@@ -1290,6 +1281,46 @@ class State:
         RED = 0
         YELLOW = 1
         GREEN = 2
+        PRE_GREEN = 3
+
+
+class TrafficLight:
+
+    def __init__(self, road: Road, state: State.Light = State.Light.RED) -> None:
+        self.road = road
+        self.state = state
+        self.time = 0.0
+
+    def toggle(self) -> None:
+        if self.state == State.Light.GREEN:
+            self.state = State.Light.YELLOW
+            self.time = time.time()
+        elif self.state == State.Light.RED:
+            self.state = State.Light.PRE_GREEN
+            self.time = time.time()
+
+    def update(self) -> None:
+        if self.state == State.Light.YELLOW:
+            if (time.time() - self.time) * self.road.view.sim.speed > 4:
+                self.state = State.Light.RED
+        elif self.state == State.Light.PRE_GREEN:
+            if (time.time() - self.time) * self.road.view.sim.speed > 4:
+                self.state = State.Light.GREEN
+
+    def color(self) -> list[tuple[int, int, int]]:
+        if self.state == State.Light.YELLOW:
+            return [Color.INACTIVE_RED, Color.YELLOW, Color.INACTIVE_GREEN]
+        elif self.state == State.Light.GREEN:
+            return [Color.INACTIVE_RED, Color.INACTIVE_YELLOW, Color.GREEN]
+        else:
+            return [Color.RED, Color.INACTIVE_YELLOW, Color.INACTIVE_GREEN]
+
+    def draw(self) -> None:
+        x, y = self.road.get_light_coords()
+        colors = self.color()
+        pygame.draw.circle(self.road.window, colors[0], (x, y), 10)
+        pygame.draw.circle(self.road.window, colors[1], (x, y + 25), 10)
+        pygame.draw.circle(self.road.window, colors[2], (x, y + 50), 10)
 
 
 class Color:
@@ -1528,8 +1559,8 @@ class Text(UIElement):
         super().update()
 
     def draw(self) -> None:
-        # if not self.sim.needs_refresh:
-        #     return
+        if self.sim.needs_refresh:
+            self.update()
         self.sim.window.fill(self.background_color, self.rect)
         self.update()
         self.sim.window.blit(self.text_surface, (self.text_x, self.text_y))
